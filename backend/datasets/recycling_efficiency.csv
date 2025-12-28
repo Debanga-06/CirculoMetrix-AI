@@ -1,0 +1,4 @@
+material,efficiency,quality_factor,global_recycling_rate,source
+aluminium,0.95,0.98,0.75,International Aluminium Institute
+copper,0.98,0.99,0.80,International Copper Association
+steel,0.90,0.95,0.85,World Steel Association

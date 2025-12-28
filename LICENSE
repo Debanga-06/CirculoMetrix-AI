@@ -1,0 +1,75 @@
+MIT License
+
+Copyright (c) 2024 CirculoMetrix AI Team
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+THIRD-PARTY LICENSES
+
+This project uses the following open-source libraries:
+
+1. FastAPI - MIT License
+   Copyright (c) 2018 Sebastián Ramírez
+   https://github.com/tiangolo/fastapi
+
+2. React - MIT License
+   Copyright (c) Meta Platforms, Inc. and affiliates
+   https://github.com/facebook/react
+
+3. Recharts - MIT License
+   Copyright (c) 2015-2024 Recharts Group
+   https://github.com/recharts/recharts
+
+4. Scikit-learn - BSD 3-Clause License
+   Copyright (c) 2007-2024 The scikit-learn developers
+   https://github.com/scikit-learn/scikit-learn
+
+5. Pandas - BSD 3-Clause License
+   Copyright (c) 2008-2024, AQR Capital Management, LLC, Lambda Foundry, Inc. and PyData Development Team
+   https://github.com/pandas-dev/pandas
+
+For complete license information of all dependencies, please refer to:
+- Backend dependencies: requirements.txt
+- Frontend dependencies: frontend/package.json
+
+---
+
+DATA SOURCES ATTRIBUTION
+
+LCA emission factors and circularity metrics are derived from:
+- Ecoinvent Database v3.9 (License: ecoinvent 3.9)
+- UN Environment Programme Resources
+- Ellen MacArthur Foundation Circularity Indicators
+
+Please ensure compliance with data source licenses when using this software
+for commercial purposes.
+
+---
+
+DISCLAIMER
+
+This software is provided for informational and analytical purposes only.
+The LCA calculations and AI predictions should be validated by certified
+environmental consultants before being used for official sustainability
+reporting or regulatory compliance.
+
+The authors and contributors are not liable for any decisions made based on
+the outputs of this software.

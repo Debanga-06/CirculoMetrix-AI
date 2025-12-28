@@ -1,0 +1,46 @@
+{
+    "name": "circulometrix-ai",
+    "version": "1.0.0",
+    "description": "AI-Powered Life Cycle Assessment & Circular Economy Platform for Metal Industries",
+    "main": "index.js",
+    "scripts": {
+      "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+      "dev:frontend": "cd frontend && npm run dev",
+      "dev:backend": "cd backend && uvicorn main:app --reload",
+      "build": "cd frontend && npm run build",
+      "test": "npm run test:backend && npm run test:frontend",
+      "test:backend": "cd backend && pytest tests/ -v",
+      "test:frontend": "cd frontend && npm test",
+      "lint": "cd frontend && npm run lint",
+      "format": "cd backend && black . && cd ../frontend && npm run format",
+      "docker:up": "docker-compose up --build",
+      "docker:down": "docker-compose down"
+    },
+    "keywords": [
+      "lca",
+      "circular-economy",
+      "sustainability",
+      "ai",
+      "machine-learning",
+      "metal-industry",
+      "carbon-footprint",
+      "environmental-impact"
+    ],
+    "author": "Your Name <your.email@example.com>",
+    "license": "MIT",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/yourusername/circulometrix-ai.git"
+    },
+    "bugs": {
+      "url": "https://github.com/yourusername/circulometrix-ai/issues"
+    },
+    "homepage": "https://github.com/yourusername/circulometrix-ai#readme",
+    "devDependencies": {
+      "concurrently": "^8.2.2"
+    },
+    "engines": {
+      "node": ">=18.0.0",
+      "npm": ">=9.0.0"
+    }
+  }

@@ -1,0 +1,5 @@
+mode,co2_per_ton_km,energy_per_ton_km,source
+truck,0.062,0.85,DEFRA 2023
+rail,0.022,0.30,DEFRA 2023
+ship,0.008,0.11,DEFRA 2023
+air,0.602,8.20,DEFRA 2023

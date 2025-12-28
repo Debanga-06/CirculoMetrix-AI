@@ -1,0 +1,306 @@
+# ========================================
+# CirculoMetrix AI - Git Ignore File
+# ========================================
+
+# ----------------------------------------
+# Environment Variables
+# ----------------------------------------
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.*.local
+
+# ----------------------------------------
+# Python
+# ----------------------------------------
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+env.bak/
+venv.bak/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# pyenv
+.python-version
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# ----------------------------------------
+# Node.js / Frontend
+# ----------------------------------------
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Build output
+dist/
+dist-ssr/
+*.local
+
+# Editor directories and files
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Vite
+.vite/
+
+# ----------------------------------------
+# Database
+# ----------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+
+# PostgreSQL
+*.pgsql
+
+# ----------------------------------------
+# Machine Learning Models
+# ----------------------------------------
+# Large model files (track with Git LFS if needed)
+*.h5
+*.hdf5
+*.keras
+*.onnx
+*.pb
+*.pth
+*.pt
+*.ckpt
+
+# Exception: Keep tracked models
+!backend/ml_models/predictor.pkl
+!backend/ml_models/scaler.pkl
+!backend/ml_models/feature_columns.json
+
+# Training outputs
+training_output/
+checkpoints/
+tensorboard_logs/
+
+# ----------------------------------------
+# Logs
+# ----------------------------------------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+pnpm-debug.log*
+
+# ----------------------------------------
+# OS Files
+# ----------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ----------------------------------------
+# Docker
+# ----------------------------------------
+# Docker volumes
+docker-compose.override.yml
+.dockerignore
+
+# ----------------------------------------
+# Generated Files
+# ----------------------------------------
+# Reports
+reports/*.pdf
+reports/*.html
+!reports/sample-report.pdf
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Uploads
+uploads/
+temp_uploads/
+
+# ----------------------------------------
+# IDEs and Editors
+# ----------------------------------------
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+out/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# ----------------------------------------
+# Testing
+# ----------------------------------------
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# ----------------------------------------
+# CI/CD
+# ----------------------------------------
+.github/workflows/secrets.yml
+
+# ----------------------------------------
+# Miscellaneous
+# ----------------------------------------
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Compressed files (unless needed)
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# API Keys and Secrets
+secrets/
+credentials/
+*.pem
+*.key
+*.crt
+
+# Local development
+.local/
+local_data/
+
+# Dataset cache
+.cache/
+cached_data/

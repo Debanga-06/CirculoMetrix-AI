@@ -1,0 +1,7 @@
+material,production_type,co2_per_kg,energy_per_kg,water_per_kg,source
+aluminium,primary,11.5,155.0,22.0,Ecoinvent 3.9
+aluminium,secondary,0.5,8.0,2.0,Ecoinvent 3.9
+copper,primary,3.2,35.0,15.0,Ecoinvent 3.9
+copper,secondary,1.2,12.0,5.0,Ecoinvent 3.9
+steel,primary,2.8,21.0,8.5,Ecoinvent 3.9
+steel,secondary,0.4,4.5,1.5,Ecoinvent 3.9
