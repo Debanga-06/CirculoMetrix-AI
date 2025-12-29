@@ -1,80 +1,89 @@
 """
 MongoDB Atlas configuration for CirculoMetrix AI
-Safe FastAPI lifecycle + async-first design
+Render-safe, async-only, non-blocking
 """
 
 import logging
-from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo.errors import ConnectionFailure
 from contextlib import asynccontextmanager
-from functools import wraps
-
 from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-mongo_client: MongoClient | None = None
-async_mongo_client: AsyncIOMotorClient | None = None
-db = None
+async_client: AsyncIOMotorClient | None = None
 async_db = None
+_indexes_created = False
 
 
 # ==========================
-# Initialization
+# Initialization (NON-BLOCKING)
 # ==========================
 
-def init_db():
-    global mongo_client, async_mongo_client, db, async_db
+async def init_db():
+    """
+    Initialize MongoDB lazily.
+    Never blocks app startup on Render.
+    """
+    global async_client, async_db
+
+    if async_client is not None:
+        return
 
     try:
-        mongo_client = MongoClient(settings.database_url)
-        async_mongo_client = AsyncIOMotorClient(settings.database_url)
+        async_client = AsyncIOMotorClient(
+            settings.MONGODB_URI,
+            serverSelectionTimeoutMS=5000,
+        )
 
-        config = settings.model_dump()
-        db_name = config.get("DATABASE_NAME")
+        async_db = async_client[settings.DATABASE_NAME]
 
-        if not db_name:
-          raise RuntimeError("DATABASE_NAME is not configured")
+        # Fire-and-forget index creation
+        await _safe_create_indexes()
 
-        db = mongo_client[db_name]
-
-        async_db = async_mongo_client[settings.DATABASE_NAME]
-
-        # Ping test
-        mongo_client.admin.command("ping")
         logger.info("🍃 MongoDB Atlas connected")
 
-        _create_indexes()
+    except Exception as e:
+        logger.warning(f"MongoDB not ready (will retry lazily): {e}")
+
+
+# ==========================
+# Indexes (SAFE)
+# ==========================
+
+async def _safe_create_indexes():
+    global _indexes_created
+
+    if _indexes_created:
+        return
+
+    try:
+        collections = await async_db.list_collection_names()
+
+        if "users" not in collections:
+            await async_db.create_collection("users")
+
+        await async_db.users.create_index("email", unique=True)
+        await async_db.users.create_index("username", unique=True)
+        await async_db.users.create_index("created_at")
+
+        _indexes_created = True
+        logger.info("📌 MongoDB indexes ready")
 
     except Exception as e:
-        logger.error(f"MongoDB init failed: {e}")
-        raise
-
-
-def _create_indexes():
-    collections = db.list_collection_names()
-
-    if "users" not in collections:
-        db.create_collection("users")
-
-    db.users.create_index("email", unique=True)
-    db.users.create_index("username", unique=True)
-    db.users.create_index("created_at")
-
-    logger.info("📌 MongoDB indexes ready")
+        logger.warning(f"Index creation skipped: {e}")
 
 
 # ==========================
-# Dependencies
+# Dependency
 # ==========================
 
-async def get_async_db():
+async def get_database():
+    """
+    FastAPI dependency
+    """
+    if async_db is None:
+        await init_db()
     return async_db
-
-
-def get_db():
-    return db
 
 
 # ==========================
@@ -83,7 +92,10 @@ def get_db():
 
 @asynccontextmanager
 async def async_transaction():
-    async with await async_mongo_client.start_session() as session:
+    if async_client is None:
+        await init_db()
+
+    async with await async_client.start_session() as session:
         async with session.start_transaction():
             yield session
 
@@ -94,8 +106,12 @@ async def async_transaction():
 
 async def database_health_check():
     try:
-        await async_mongo_client.admin.command("ping")
+        if async_client is None:
+            await init_db()
+
+        await async_client.admin.command("ping")
         return {"status": "healthy"}
+
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
 
@@ -105,9 +121,6 @@ async def database_health_check():
 # ==========================
 
 def close_db_connections():
-    if mongo_client:
-        mongo_client.close()
-    if async_mongo_client:
-        async_mongo_client.close()
-
-    logger.info("🔌 MongoDB connections closed")
+    if async_client is not None:
+        async_client.close()
+        logger.info("🔌 MongoDB connections closed")
