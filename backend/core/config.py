@@ -6,7 +6,6 @@ Supports MongoDB Atlas for production and development environments
 from pydantic_settings import BaseSettings
 from typing import Optional, List
 from pathlib import Path
-from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator
 
 
