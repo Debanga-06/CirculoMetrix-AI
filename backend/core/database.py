@@ -77,14 +77,10 @@ async def _safe_create_indexes():
 # Dependency
 # ==========================
 
-async def get_database():
-    """
-    FastAPI dependency
-    """
+async def get_async_db():
     if async_db is None:
         await init_db()
     return async_db
-
 
 # ==========================
 # Transactions
