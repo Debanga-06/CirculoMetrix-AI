@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     try:
         # Initialize MongoDB (collections + indexes)
         logger.info("🍃 Initializing MongoDB...")
-        init_db()
+        await init_db()
         logger.info("✅ MongoDB initialized successfully")
 
         # Load ML models
