@@ -8,8 +8,12 @@ from typing import Dict, Any
 import logging
 
 from models.schemas import LCAInputSchema, LCAResultSchema
-from services.lca_engine import lca_engine
+from services.lca_engine import get_lca_engine
+from core.database import get_db 
+from fastapi import Depends
 from core.utils import success_response, error_response
+
+lca_engine = get_lca_engine()
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -19,7 +23,7 @@ router = APIRouter()
 
 
 @router.post("/calculate", response_model=Dict[str, Any])
-async def calculate_lca(input_data: LCAInputSchema):
+async def calculate_lca(input_data: LCAInputSchema,db=Depends(get_db)):
     """
     Calculate Life Cycle Assessment for given input
     

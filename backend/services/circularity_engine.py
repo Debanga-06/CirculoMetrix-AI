@@ -1,11 +1,14 @@
 """
 Circular Economy Metrics Calculation Engine
 Implements Material Circularity Indicator (MCI) based on Ellen MacArthur Foundation methodology
+MongoDB compatible version with metrics tracking
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import numpy as np
 import logging
+from datetime import datetime
+from bson import ObjectId
 
 from models.schemas import CircularityInputSchema, CircularityResultSchema
 
@@ -19,19 +22,31 @@ class CircularityEngine:
     Calculates MCI, recycling rates, and circularity levels
     """
     
-    def __init__(self):
-        """Initialize circularity engine"""
+    def __init__(self, db=None):
+        """
+        Initialize circularity engine
+        
+        Args:
+            db: MongoDB database instance (optional, for storing calculations)
+        """
+        self.db = db
         logger.info("Circularity Engine initialized successfully")
     
     def calculate_circularity_metrics(
         self,
-        input_data: CircularityInputSchema
+        input_data: CircularityInputSchema,
+        user_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        save_calculation: bool = False
     ) -> CircularityResultSchema:
         """
         Calculate comprehensive circularity metrics
         
         Args:
             input_data: Circularity input parameters
+            user_id: User ID for tracking (optional)
+            project_id: Project ID for linking (optional)
+            save_calculation: Whether to save calculation to database
             
         Returns:
             Circularity results including MCI score
@@ -53,6 +68,10 @@ class CircularityEngine:
                 waste_reduction=round(waste_reduction, 2),
                 circularity_level=circularity_level
             )
+            
+            # Save calculation to database if requested
+            if save_calculation and self.db is not None:
+                self._save_calculation_to_db(input_data, result, user_id, project_id)
             
             logger.info(f"Circularity calculation completed: MCI = {result.mci_score}")
             return result
@@ -108,7 +127,7 @@ class CircularityEngine:
             'steel': 20
         }
         
-        average_lifespan = material_lifespans.get(input_data.material.value, 15)
+        average_lifespan = material_lifespans.get(input_data.material, 15)
         
         # Utility factor calculation
         if input_data.product_lifespan >= average_lifespan:
@@ -207,6 +226,47 @@ class CircularityEngine:
             return "Low"
         else:
             return "Very Low"
+    
+    def _save_calculation_to_db(
+        self,
+        input_data: CircularityInputSchema,
+        result: CircularityResultSchema,
+        user_id: Optional[str],
+        project_id: Optional[str]
+    ):
+        """
+        Save circularity calculation to MongoDB
+        
+        Args:
+            input_data: Input parameters
+            result: Calculation results
+            user_id: User ID
+            project_id: Project ID
+        """
+        try:
+            if self.db is None:
+                return
+            
+            calculation_doc = {
+                "user_id": user_id,
+                "project_id": project_id,
+                "input_data": input_data.dict(),
+                "results": {
+                    "mci_score": result.mci_score,
+                    "recycled_content_rate": result.recycled_content_rate,
+                    "end_of_life_recycling_rate": result.end_of_life_recycling_rate,
+                    "waste_reduction": result.waste_reduction,
+                    "circularity_level": result.circularity_level
+                },
+                "material": input_data.material,
+                "created_at": datetime.utcnow()
+            }
+            
+            self.db.circularity_calculations.insert_one(calculation_doc)
+            logger.debug("Circularity calculation saved to database")
+            
+        except Exception as e:
+            logger.error(f"Error saving calculation to database: {str(e)}")
     
     def calculate_material_flow_analysis(
         self,
@@ -414,7 +474,234 @@ class CircularityEngine:
             },
             "feasibility": "Achievable" if gap < 0.2 else "Challenging" if gap < 0.4 else "Requires Major Changes"
         }
+    
+    def get_calculation_history(
+        self,
+        user_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        material: Optional[str] = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Get circularity calculation history from database
+        
+        Args:
+            user_id: Filter by user ID (optional)
+            project_id: Filter by project ID (optional)
+            material: Filter by material type (optional)
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of calculation documents
+        """
+        if self.db is None:
+            return []
+        
+        try:
+            query = {}
+            if user_id:
+                query["user_id"] = user_id
+            if project_id:
+                query["project_id"] = project_id
+            if material:
+                query["material"] = material
+            
+            calculations = list(
+                self.db.circularity_calculations
+                .find(query)
+                .sort("created_at", -1)
+                .limit(limit)
+            )
+            
+            # Convert ObjectId to string
+            for calc in calculations:
+                calc["id"] = str(calc.pop("_id"))
+                if "created_at" in calc:
+                    calc["created_at"] = calc["created_at"].isoformat()
+            
+            return calculations
+            
+        except Exception as e:
+            logger.error(f"Error retrieving calculation history: {str(e)}")
+            return []
+    
+    def get_mci_trends(
+        self,
+        user_id: Optional[str] = None,
+        material: Optional[str] = None,
+        days: int = 30
+    ) -> Dict[str, Any]:
+        """
+        Get MCI score trends over time
+        
+        Args:
+            user_id: Filter by user ID (optional)
+            material: Filter by material type (optional)
+            days: Number of days to look back
+            
+        Returns:
+            Trend analysis data
+        """
+        if self.db is None:
+            return {"error": "Database not available"}
+        
+        try:
+            from datetime import timedelta
+            
+            start_date = datetime.utcnow() - timedelta(days=days)
+            
+            query = {"created_at": {"$gte": start_date}}
+            if user_id:
+                query["user_id"] = user_id
+            if material:
+                query["material"] = material
+            
+            calculations = list(
+                self.db.circularity_calculations
+                .find(query)
+                .sort("created_at", 1)
+            )
+            
+            if not calculations:
+                return {
+                    "trend": "No data",
+                    "average_mci": 0,
+                    "data_points": []
+                }
+            
+            # Extract MCI scores and dates
+            data_points = [
+                {
+                    "date": calc["created_at"].isoformat(),
+                    "mci_score": calc["results"]["mci_score"],
+                    "material": calc.get("material")
+                }
+                for calc in calculations
+            ]
+            
+            # Calculate average and trend
+            mci_scores = [dp["mci_score"] for dp in data_points]
+            average_mci = sum(mci_scores) / len(mci_scores)
+            
+            # Simple trend calculation (comparing first half to second half)
+            mid_point = len(mci_scores) // 2
+            if mid_point > 0:
+                first_half_avg = sum(mci_scores[:mid_point]) / mid_point
+                second_half_avg = sum(mci_scores[mid_point:]) / (len(mci_scores) - mid_point)
+                
+                if second_half_avg > first_half_avg * 1.05:
+                    trend = "Improving"
+                elif second_half_avg < first_half_avg * 0.95:
+                    trend = "Declining"
+                else:
+                    trend = "Stable"
+            else:
+                trend = "Insufficient data"
+            
+            return {
+                "trend": trend,
+                "average_mci": round(average_mci, 3),
+                "min_mci": round(min(mci_scores), 3),
+                "max_mci": round(max(mci_scores), 3),
+                "total_calculations": len(calculations),
+                "data_points": data_points
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating MCI trends: {str(e)}")
+            return {"error": str(e)}
+    
+    def get_material_statistics(self, material: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get aggregate statistics for circularity calculations
+        
+        Args:
+            material: Filter by material type (optional)
+            
+        Returns:
+            Aggregate statistics
+        """
+        if self.db is None:
+            return {"error": "Database not available"}
+        
+        try:
+            match_stage = {}
+            if material:
+                match_stage = {"$match": {"material": material}}
+            
+            pipeline = [
+                match_stage if material else {"$match": {}},
+                {
+                    "$group": {
+                        "_id": "$material",
+                        "count": {"$sum": 1},
+                        "avg_mci": {"$avg": "$results.mci_score"},
+                        "max_mci": {"$max": "$results.mci_score"},
+                        "min_mci": {"$min": "$results.mci_score"},
+                        "avg_recycled_content": {"$avg": "$results.recycled_content_rate"},
+                        "avg_recycling_rate": {"$avg": "$results.end_of_life_recycling_rate"}
+                    }
+                },
+                {
+                    "$sort": {"count": -1}
+                }
+            ]
+            
+            results = list(self.db.circularity_calculations.aggregate(pipeline))
+            
+            # Format results
+            statistics = []
+            for result in results:
+                statistics.append({
+                    "material": result["_id"],
+                    "total_calculations": result["count"],
+                    "average_mci_score": round(result.get("avg_mci", 0), 3),
+                    "max_mci_score": round(result.get("max_mci", 0), 3),
+                    "min_mci_score": round(result.get("min_mci", 0), 3),
+                    "average_recycled_content": round(result.get("avg_recycled_content", 0), 2),
+                    "average_recycling_rate": round(result.get("avg_recycling_rate", 0), 2)
+                })
+            
+            return {
+                "statistics": statistics,
+                "total_materials": len(statistics)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting material statistics: {str(e)}")
+            return {"error": str(e)}
+
+
+# Factory function to create circularity engine instance
+def create_circularity_engine(db=None) -> CircularityEngine:
+    """
+    Create and return circularity engine instance
+    
+    Args:
+        db: MongoDB database instance (optional)
+        
+    Returns:
+        CircularityEngine instance
+    """
+    return CircularityEngine(db=db)
 
 
 # Global circularity engine instance
 circularity_engine = CircularityEngine()
+
+def get_circularity_engine(db=None) -> CircularityEngine:
+    """
+    Get or create global circularity engine instance
+    
+    Args:
+        db: MongoDB database instance (optional)
+        
+    Returns:
+        CircularityEngine instance
+    """
+    global circularity_engine
+    if circularity_engine is None:
+        circularity_engine = CircularityEngine(db=db)
+    elif db is not None and circularity_engine.db is None:
+        circularity_engine.db = db
+    return circularity_engine

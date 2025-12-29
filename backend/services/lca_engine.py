@@ -1,13 +1,16 @@
 """
 Life Cycle Assessment (LCA) Calculation Engine
 Implements LCA methodology based on ISO 14040/14044 standards
+MongoDB compatible version with calculation tracking
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import pandas as pd
 import numpy as np
 import logging
 from pathlib import Path
+from datetime import datetime, timedelta
+from bson import ObjectId
 
 from core.config import settings
 from models.schemas import LCAInputSchema, LCAResultSchema, LCABreakdownSchema
@@ -22,8 +25,14 @@ class LCAEngine:
     Calculates environmental impacts across product lifecycle
     """
     
-    def __init__(self):
-        """Initialize LCA engine and load emission factors"""
+    def __init__(self, db=None):
+        """
+        Initialize LCA engine and load emission factors
+        
+        Args:
+            db: MongoDB database instance (optional, for storing calculations)
+        """
+        self.db = db
         self.emission_factors = self._load_emission_factors()
         self.transport_factors = self._load_transport_factors()
         self.recycling_efficiency = self._load_recycling_efficiency()
@@ -49,12 +58,12 @@ class LCAEngine:
         except Exception as e:
             logger.error(f"Error loading emission factors: {str(e)}")
             return self._get_default_emission_factors()
-        
+    
     def _enum_value(self, value):
+        """Helper to extract value from enum or return as-is"""
         if value is None:
-          return None
+            return None
         return value.value if hasattr(value, "value") else value
-
     
     def _load_transport_factors(self) -> pd.DataFrame:
         """
@@ -139,12 +148,21 @@ class LCAEngine:
         }
         return pd.DataFrame(data)
     
-    def calculate_lca(self, input_data: LCAInputSchema) -> LCAResultSchema:
+    def calculate_lca(
+        self,
+        input_data: LCAInputSchema,
+        user_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        save_calculation: bool = False
+    ) -> LCAResultSchema:
         """
         Calculate complete LCA for given input
         
         Args:
             input_data: LCA input parameters
+            user_id: User ID for tracking (optional)
+            project_id: Project ID for linking (optional)
+            save_calculation: Whether to save calculation to database
             
         Returns:
             LCA results with breakdown
@@ -195,6 +213,10 @@ class LCAEngine:
                 carbon_savings=round(carbon_savings, 2) if carbon_savings > 0 else None
             )
             
+            # Save calculation to database if requested
+            if save_calculation and self.db is not None:
+                self._save_calculation_to_db(input_data, result, user_id, project_id)
+            
             logger.info(f"LCA calculation completed: {result.total_co2_emissions} kg CO2")
             return result
             
@@ -203,15 +225,7 @@ class LCAEngine:
             raise
     
     def _calculate_extraction_emissions(self, input_data: LCAInputSchema) -> float:
-        """
-        Calculate emissions from raw material extraction
-        
-        Args:
-            input_data: LCA input parameters
-            
-        Returns:
-            CO2 emissions in kg
-        """
+        """Calculate emissions from raw material extraction"""
         # Virgin material portion
         virgin_portion = (100 - input_data.recycled_content) / 100
         
@@ -228,22 +242,13 @@ class LCAEngine:
             extraction_factor = 2.0  # Default
         
         emissions = input_data.quantity * virgin_portion * extraction_factor
-        
         return emissions
     
     def _calculate_production_emissions(self, input_data: LCAInputSchema) -> float:
-        """
-        Calculate emissions from production/manufacturing
-        
-        Args:
-            input_data: LCA input parameters
-            
-        Returns:
-            CO2 emissions in kg
-        """
+        """Calculate emissions from production/manufacturing"""
         material = self._enum_value(input_data.material)
         production_type = self._enum_value(input_data.production_type)
-     
+        
         # Get base production factor
         factor_data = self.emission_factors[
             (self.emission_factors['material'] == material) &
@@ -253,7 +258,6 @@ class LCAEngine:
         if len(factor_data) > 0:
             base_factor = factor_data['co2_per_kg'].values[0]
         else:
-            # Use average if specific combination not found
             base_factor = 5.0
         
         # Apply energy source multiplier
@@ -267,25 +271,16 @@ class LCAEngine:
             'wind': 0.05
         }
         
-        energy_multiplier = energy_multipliers.get(self._enum_value(input_data.energy_source),1.0)
+        energy_multiplier = energy_multipliers.get(self._enum_value(input_data.energy_source), 1.0)
         
         # Calculate with recycled content benefit
         recycled_benefit = 1 - (input_data.recycled_content / 100 * 0.8)
         
         emissions = input_data.quantity * base_factor * energy_multiplier * recycled_benefit
-        
         return emissions
     
     def _calculate_transport_emissions(self, input_data: LCAInputSchema) -> float:
-        """
-        Calculate emissions from transportation
-        
-        Args:
-            input_data: LCA input parameters
-            
-        Returns:
-            CO2 emissions in kg
-        """
+        """Calculate emissions from transportation"""
         if input_data.transport_distance == 0:
             return 0.0
         
@@ -302,19 +297,10 @@ class LCAEngine:
         
         # Calculate: (quantity in tons) * distance * factor
         emissions = (input_data.quantity / 1000) * input_data.transport_distance * co2_per_ton_km
-        
         return emissions
     
     def _calculate_end_of_life_emissions(self, input_data: LCAInputSchema) -> float:
-        """
-        Calculate emissions from end-of-life treatment
-        
-        Args:
-            input_data: LCA input parameters
-            
-        Returns:
-            CO2 emissions in kg
-        """
+        """Calculate emissions from end-of-life treatment"""
         # Recycling rate at end of life
         recycling_rate = input_data.end_of_life_recycling_rate / 100
         
@@ -335,18 +321,10 @@ class LCAEngine:
         return emissions
     
     def _calculate_total_energy(self, input_data: LCAInputSchema) -> float:
-        """
-        Calculate total energy consumption
-        
-        Args:
-            input_data: LCA input parameters
-            
-        Returns:
-            Energy consumption in MJ
-        """
+        """Calculate total energy consumption"""
         material = self._enum_value(input_data.material)
         production_type = self._enum_value(input_data.production_type)
-
+        
         # Get energy factor
         factor_data = self.emission_factors[
             (self.emission_factors['material'] == material) &
@@ -377,15 +355,7 @@ class LCAEngine:
         return total_energy
     
     def _calculate_water_usage(self, input_data: LCAInputSchema) -> float:
-        """
-        Calculate total water usage
-        
-        Args:
-            input_data: LCA input parameters
-            
-        Returns:
-            Water usage in liters
-        """
+        """Calculate total water usage"""
         material = self._enum_value(input_data.material)
         production_type = self._enum_value(input_data.production_type)
         
@@ -404,29 +374,18 @@ class LCAEngine:
         recycled_benefit = 1 - (input_data.recycled_content / 100 * 0.85)
         
         total_water = input_data.quantity * water_per_kg * recycled_benefit
-        
         return total_water
     
     def _calculate_carbon_savings(self, input_data: LCAInputSchema) -> float:
-        """
-        Calculate carbon savings compared to 100% virgin material
-        
-        Args:
-            input_data: LCA input parameters
-            
-        Returns:
-            Carbon savings in kg CO2
-        """
+        """Calculate carbon savings compared to 100% virgin material"""
         if input_data.recycled_content == 0:
             return 0.0
         
         # Calculate emissions with 100% virgin material
         virgin_input = input_data.model_copy(update={
-           "recycled_content": 0,
-           "production_type": "primary"
+            "recycled_content": 0,
+            "production_type": "primary"
         })
-
-
         
         virgin_emissions = (
             self._calculate_extraction_emissions(virgin_input) +
@@ -440,8 +399,52 @@ class LCAEngine:
         )
         
         savings = virgin_emissions - current_emissions
-        
         return max(0, savings)
+    
+    def _save_calculation_to_db(
+        self,
+        input_data: LCAInputSchema,
+        result: LCAResultSchema,
+        user_id: Optional[str],
+        project_id: Optional[str]
+    ):
+        """
+        Save LCA calculation to MongoDB
+        
+        Args:
+            input_data: Input parameters
+            result: Calculation results
+            user_id: User ID
+            project_id: Project ID
+        """
+        try:
+            if self.db is None:
+                return
+            
+            calculation_doc = {
+                "user_id": user_id,
+                "project_id": project_id,
+                "input_data": input_data.dict(),
+                "results": {
+                    "total_co2_emissions": result.total_co2_emissions,
+                    "co2_per_unit": result.co2_per_unit,
+                    "energy_consumption": result.energy_consumption,
+                    "energy_per_unit": result.energy_per_unit,
+                    "water_usage": result.water_usage,
+                    "water_per_unit": result.water_per_unit,
+                    "breakdown": result.breakdown.dict(),
+                    "carbon_savings": result.carbon_savings
+                },
+                "material": self._enum_value(input_data.material),
+                "production_type": self._enum_value(input_data.production_type),
+                "created_at": datetime.utcnow()
+            }
+            
+            self.db.lca_calculations.insert_one(calculation_doc)
+            logger.debug("LCA calculation saved to database")
+            
+        except Exception as e:
+            logger.error(f"Error saving calculation to database: {str(e)}")
     
     def compare_scenarios(
         self,
@@ -464,8 +467,10 @@ class LCAEngine:
         # Calculate improvements
         co2_improvement = ((base_result.total_co2_emissions - alt_result.total_co2_emissions) 
                           / base_result.total_co2_emissions * 100)
+        
         energy_improvement = ((base_result.energy_consumption - alt_result.energy_consumption) 
                              / base_result.energy_consumption * 100)
+        
         water_improvement = ((base_result.water_usage - alt_result.water_usage) 
                             / base_result.water_usage * 100)
         
@@ -481,7 +486,234 @@ class LCAEngine:
                 )
             }
         }
+    
+    def get_calculation_history(
+        self,
+        user_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        material: Optional[str] = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Get LCA calculation history from database
+        
+        Args:
+            user_id: Filter by user ID (optional)
+            project_id: Filter by project ID (optional)
+            material: Filter by material type (optional)
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of calculation documents
+        """
+        if self.db is None:
+            return []
+        
+        try:
+            query = {}
+            if user_id:
+                query["user_id"] = user_id
+            if project_id:
+                query["project_id"] = project_id
+            if material:
+                query["material"] = material
+            
+            calculations = list(
+                self.db.lca_calculations
+                .find(query)
+                .sort("created_at", -1)
+                .limit(limit)
+            )
+            
+            # Convert ObjectId to string
+            for calc in calculations:
+                calc["id"] = str(calc.pop("_id"))
+                if "created_at" in calc:
+                    calc["created_at"] = calc["created_at"].isoformat()
+            
+            return calculations
+            
+        except Exception as e:
+            logger.error(f"Error retrieving calculation history: {str(e)}")
+            return []
+    
+    def get_emission_trends(
+        self,
+        user_id: Optional[str] = None,
+        material: Optional[str] = None,
+        days: int = 30
+    ) -> Dict[str, Any]:
+        """
+        Get CO2 emission trends over time
+        
+        Args:
+            user_id: Filter by user ID (optional)
+            material: Filter by material type (optional)
+            days: Number of days to look back
+            
+        Returns:
+            Trend analysis data
+        """
+        if self.db is None:
+            return {"error": "Database not available"}
+        
+        try:
+            start_date = datetime.utcnow() - timedelta(days=days)
+            
+            query = {"created_at": {"$gte": start_date}}
+            if user_id:
+                query["user_id"] = user_id
+            if material:
+                query["material"] = material
+            
+            calculations = list(
+                self.db.lca_calculations
+                .find(query)
+                .sort("created_at", 1)
+            )
+            
+            if not calculations:
+                return {
+                    "trend": "No data",
+                    "average_co2": 0,
+                    "data_points": []
+                }
+            
+            # Extract emission data and dates
+            data_points = [
+                {
+                    "date": calc["created_at"].isoformat(),
+                    "co2_emissions": calc["results"]["total_co2_emissions"],
+                    "material": calc.get("material")
+                }
+                for calc in calculations
+            ]
+            
+            # Calculate statistics
+            co2_values = [dp["co2_emissions"] for dp in data_points]
+            average_co2 = sum(co2_values) / len(co2_values)
+            
+            # Simple trend calculation
+            mid_point = len(co2_values) // 2
+            if mid_point > 0:
+                first_half_avg = sum(co2_values[:mid_point]) / mid_point
+                second_half_avg = sum(co2_values[mid_point:]) / (len(co2_values) - mid_point)
+                
+                if second_half_avg < first_half_avg * 0.95:
+                    trend = "Improving (Decreasing Emissions)"
+                elif second_half_avg > first_half_avg * 1.05:
+                    trend = "Worsening (Increasing Emissions)"
+                else:
+                    trend = "Stable"
+            else:
+                trend = "Insufficient data"
+            
+            return {
+                "trend": trend,
+                "average_co2": round(average_co2, 2),
+                "min_co2": round(min(co2_values), 2),
+                "max_co2": round(max(co2_values), 2),
+                "total_calculations": len(calculations),
+                "data_points": data_points
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating emission trends: {str(e)}")
+            return {"error": str(e)}
+    
+    def get_material_statistics(self, material: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get aggregate statistics for LCA calculations
+        
+        Args:
+            material: Filter by material type (optional)
+            
+        Returns:
+            Aggregate statistics
+        """
+        if self.db is None:
+            return {"error": "Database not available"}
+        
+        try:
+            match_stage = {}
+            if material:
+                match_stage = {"$match": {"material": material}}
+            
+            pipeline = [
+                match_stage if material else {"$match": {}},
+                {
+                    "$group": {
+                        "_id": "$material",
+                        "count": {"$sum": 1},
+                        "avg_co2": {"$avg": "$results.total_co2_emissions"},
+                        "avg_energy": {"$avg": "$results.energy_consumption"},
+                        "avg_water": {"$avg": "$results.water_usage"},
+                        "total_co2": {"$sum": "$results.total_co2_emissions"},
+                        "total_energy": {"$sum": "$results.energy_consumption"},
+                        "total_water": {"$sum": "$results.water_usage"}
+                    }
+                },
+                {
+                    "$sort": {"count": -1}
+                }
+            ]
+            
+            results = list(self.db.lca_calculations.aggregate(pipeline))
+            
+            # Format results
+            statistics = []
+            for result in results:
+                statistics.append({
+                    "material": result["_id"],
+                    "total_calculations": result["count"],
+                    "average_co2_emissions": round(result.get("avg_co2", 0), 2),
+                    "average_energy_consumption": round(result.get("avg_energy", 0), 2),
+                    "average_water_usage": round(result.get("avg_water", 0), 2),
+                    "total_co2_emissions": round(result.get("total_co2", 0), 2),
+                    "total_energy_consumption": round(result.get("total_energy", 0), 2),
+                    "total_water_usage": round(result.get("total_water", 0), 2)
+                })
+            
+            return {
+                "statistics": statistics,
+                "total_materials": len(statistics)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting material statistics: {str(e)}")
+            return {"error": str(e)}
+
+
+# Factory function to create LCA engine instance
+def create_lca_engine(db=None) -> LCAEngine:
+    """
+    Create and return LCA engine instance
+    
+    Args:
+        db: MongoDB database instance (optional)
+        
+    Returns:
+        LCAEngine instance
+    """
+    return LCAEngine(db=db)
 
 
 # Global LCA engine instance
-lca_engine = LCAEngine()
+lca_engine = None
+
+def get_lca_engine(db=None) -> LCAEngine:
+    """
+    Get or create global LCA engine instance
+    
+    Args:
+        db: MongoDB database instance (optional)
+        
+    Returns:
+        LCAEngine instance
+    """
+    global lca_engine
+    if lca_engine is None:
+        lca_engine = LCAEngine(db=db)
+    elif db is not None and lca_engine.db is None:
+        lca_engine.db = db
+    return lca_engine

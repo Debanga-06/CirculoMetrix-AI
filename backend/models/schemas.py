@@ -1,13 +1,36 @@
 """
 Pydantic schemas for request/response validation
-Data models for API endpoints
+Data models for API endpoints - MongoDB compatible
 """
 
 from pydantic import BaseModel, Field, validator, root_validator
 from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
-from typing import Union
+from bson import ObjectId
+
+
+# ==========================================
+# MongoDB ObjectId Validator
+# ==========================================
+
+class PyObjectId(ObjectId):
+    """Custom ObjectId type for Pydantic"""
+    
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
+    
+    @classmethod
+    def validate(cls, v):
+        if not ObjectId.is_valid(v):
+            raise ValueError("Invalid ObjectId")
+        return ObjectId(v)
+    
+    @classmethod
+    def __modify_schema__(cls, field_schema):
+        field_schema.update(type="string")
+
 
 # ==========================================
 # Enums
@@ -66,7 +89,8 @@ class LCAInputSchema(BaseModel):
     end_of_life_recycling_rate: float = Field(default=0, ge=0, le=100, description="End-of-life recycling rate (0-100)")
     
     class Config:
-        schema_extra = {
+        use_enum_values = True  # Use enum values instead of enum objects
+        json_schema_extra = {
             "example": {
                 "material": "aluminium",
                 "production_type": "secondary",
@@ -82,7 +106,7 @@ class LCAInputSchema(BaseModel):
     @validator('material')
     def normalize_material(cls, v):
         """Normalize aluminum spelling"""
-        if v == MaterialType.ALUMINUM:
+        if v == MaterialType.ALUMINUM or v == "aluminum":
             return MaterialType.ALUMINIUM
         return v
 
@@ -97,6 +121,16 @@ class LCABreakdownSchema(BaseModel):
     production: float = Field(..., description="Emissions from production")
     transport: float = Field(..., description="Emissions from transport")
     end_of_life: float = Field(..., description="Emissions from end-of-life")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "raw_material_extraction": 300.5,
+                "production": 750.0,
+                "transport": 150.0,
+                "end_of_life": 50.0
+            }
+        }
 
 
 class LCAResultSchema(BaseModel):
@@ -113,7 +147,7 @@ class LCAResultSchema(BaseModel):
     carbon_savings: Optional[float] = Field(None, description="Carbon savings vs virgin material")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "total_co2_emissions": 1250.5,
                 "co2_per_unit": 1.25,
@@ -148,7 +182,8 @@ class CircularityInputSchema(BaseModel):
     product_lifespan: float = Field(..., gt=0, description="Product lifespan in years")
     
     class Config:
-        schema_extra = {
+        use_enum_values = True
+        json_schema_extra = {
             "example": {
                 "material": "aluminium",
                 "virgin_material_input": 250,
@@ -171,7 +206,7 @@ class CircularityResultSchema(BaseModel):
     circularity_level: str = Field(..., description="Circularity level (Low/Medium/High/Excellent)")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "mci_score": 0.78,
                 "recycled_content_rate": 75.0,
@@ -197,7 +232,8 @@ class AIPredictionInputSchema(BaseModel):
     process_efficiency: float = Field(default=85, ge=0, le=100, description="Process efficiency (%)")
     
     class Config:
-        schema_extra = {
+        use_enum_values = True
+        json_schema_extra = {
             "example": {
                 "material": "copper",
                 "production_volume": 5000,
@@ -218,7 +254,7 @@ class AIPredictionResultSchema(BaseModel):
     prediction_range: Dict[str, float] = Field(..., description="Prediction range (min/max)")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "predicted_co2_emissions": 3500.5,
                 "predicted_energy_consumption": 25000.0,
@@ -249,7 +285,7 @@ class RecommendationSchema(BaseModel):
     implementation_difficulty: str = Field(..., description="Difficulty (Easy/Medium/Hard)")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "title": "Switch to Renewable Energy",
                 "description": "Replace fossil fuel energy with solar/wind power",
@@ -273,7 +309,7 @@ class RecommendationsResultSchema(BaseModel):
     priority_actions: List[str] = Field(..., description="Priority actions to take")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "recommendations": [],
                 "total_estimated_savings": {
@@ -303,7 +339,7 @@ class WhatIfScenarioSchema(BaseModel):
     changes: Dict[str, Any] = Field(..., description="Parameters to change")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "scenario_name": "Increase Recycled Content to 90%",
                 "base_input": {
@@ -332,7 +368,7 @@ class WhatIfResultSchema(BaseModel):
     improvements: Dict[str, float] = Field(..., description="Improvements (percentage)")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "scenario_name": "Increase Recycled Content",
                 "base_case": {},
@@ -354,17 +390,33 @@ class ReportRequestSchema(BaseModel):
     """
     Request schema for report generation
     """
+    project_id: Optional[str] = Field(None, description="Existing project ID (MongoDB ObjectId)")
     project_name: str = Field(..., description="Project name")
     lca_input: LCAInputSchema = Field(..., description="LCA input data")
     include_recommendations: bool = Field(default=True, description="Include recommendations")
     include_comparisons: bool = Field(default=True, description="Include industry comparisons")
     format: str = Field(default="pdf", description="Report format (pdf/html)")
     
+    @validator('project_id')
+    def validate_project_id(cls, v):
+        """Validate MongoDB ObjectId format"""
+        if v is not None and not ObjectId.is_valid(v):
+            raise ValueError("Invalid project ID format")
+        return v
+    
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
+                "project_id": "507f1f77bcf86cd799439011",
                 "project_name": "Aluminum Production Q1 2024",
-                "lca_input": {},
+                "lca_input": {
+                    "material": "aluminium",
+                    "production_type": "secondary",
+                    "quantity": 1000,
+                    "energy_source": "renewable",
+                    "transport_distance": 500,
+                    "recycled_content": 75
+                },
                 "include_recommendations": True,
                 "include_comparisons": True,
                 "format": "pdf"
@@ -376,17 +428,130 @@ class ReportResponseSchema(BaseModel):
     """
     Response schema for report generation
     """
-    report_id: str = Field(..., description="Unique report ID")
+    report_id: str = Field(..., description="Unique report ID (MongoDB ObjectId)")
     report_url: str = Field(..., description="Download URL")
     generated_at: datetime = Field(..., description="Generation timestamp")
     file_size: int = Field(..., description="File size in bytes")
     
     class Config:
-        schema_extra = {
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+        json_schema_extra = {
             "example": {
-                "report_id": "rep_abc123",
-                "report_url": "/api/v1/report/download/rep_abc123",
+                "report_id": "507f1f77bcf86cd799439011",
+                "report_url": "/api/v1/reports/download/507f1f77bcf86cd799439011",
                 "generated_at": "2024-01-15T10:30:00",
                 "file_size": 524288
+            }
+        }
+
+
+# ==========================================
+# Pagination Schemas
+# ==========================================
+
+class PaginationParams(BaseModel):
+    """
+    Pagination parameters for list endpoints
+    """
+    skip: int = Field(default=0, ge=0, description="Number of records to skip")
+    limit: int = Field(default=20, ge=1, le=100, description="Number of records to return")
+    sort_by: Optional[str] = Field(default="created_at", description="Field to sort by")
+    sort_order: Optional[str] = Field(default="desc", description="Sort order (asc/desc)")
+    
+    @validator('sort_order')
+    def validate_sort_order(cls, v):
+        """Validate sort order"""
+        if v not in ["asc", "desc"]:
+            raise ValueError("sort_order must be 'asc' or 'desc'")
+        return v
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "skip": 0,
+                "limit": 20,
+                "sort_by": "created_at",
+                "sort_order": "desc"
+            }
+        }
+
+
+class PaginatedResponseSchema(BaseModel):
+    """
+    Generic paginated response wrapper
+    """
+    items: List[Any] = Field(..., description="List of items")
+    total: int = Field(..., description="Total number of items")
+    skip: int = Field(..., description="Number of items skipped")
+    limit: int = Field(..., description="Number of items per page")
+    has_more: bool = Field(..., description="Whether there are more items")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "items": [],
+                "total": 100,
+                "skip": 0,
+                "limit": 20,
+                "has_more": True
+            }
+        }
+
+
+# ==========================================
+# Error Response Schemas
+# ==========================================
+
+class ErrorResponseSchema(BaseModel):
+    """
+    Standard error response
+    """
+    error: str = Field(..., description="Error type")
+    message: str = Field(..., description="Error message")
+    details: Optional[Dict[str, Any]] = Field(None, description="Additional error details")
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Error timestamp")
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+        json_schema_extra = {
+            "example": {
+                "error": "ValidationError",
+                "message": "Invalid input data",
+                "details": {
+                    "field": "quantity",
+                    "issue": "must be greater than 0"
+                },
+                "timestamp": "2024-01-15T10:30:00"
+            }
+        }
+
+
+# ==========================================
+# Health Check Schema
+# ==========================================
+
+class HealthCheckSchema(BaseModel):
+    """
+    Health check response
+    """
+    status: str = Field(..., description="Service status")
+    database: str = Field(..., description="Database status")
+    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Check timestamp")
+    version: str = Field(..., description="API version")
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+        json_schema_extra = {
+            "example": {
+                "status": "healthy",
+                "database": "connected",
+                "timestamp": "2024-01-15T10:30:00",
+                "version": "1.0.0"
             }
         }

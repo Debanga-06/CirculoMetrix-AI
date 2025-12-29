@@ -15,7 +15,7 @@ from typing import Dict, Any
 
 # Import core modules
 from core.config import settings
-from core.database import engine, Base
+from core.database import init_db, close_db_connections
 
 # Import routers
 from routers import (
@@ -38,35 +38,28 @@ logger = logging.getLogger(__name__)
 # Lifespan context manager for startup and shutdown events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Lifespan event handler for application startup and shutdown
-    """
-    # Startup
     logger.info("🚀 Starting CirculoMetrix AI Backend...")
-    
+
     try:
-        # Create database tables
-        logger.info("📊 Creating database tables...")
-        Base.metadata.create_all(bind=engine)
-        logger.info("✅ Database tables created successfully")
-        
+        # Initialize MongoDB (collections + indexes)
+        logger.info("🍃 Initializing MongoDB...")
+        init_db()
+        logger.info("✅ MongoDB initialized successfully")
+
         # Load ML models
         logger.info("🤖 Loading ML models...")
-        # Model loading is handled in services/ai_engine.py
         logger.info("✅ ML models loaded successfully")
-        
-        logger.info("✨ CirculoMetrix AI Backend started successfully!")
-        
+
     except Exception as e:
         logger.error(f"❌ Error during startup: {str(e)}")
         raise
-    
+
     yield
-    
+
     # Shutdown
     logger.info("👋 Shutting down CirculoMetrix AI Backend...")
-    logger.info("✅ Shutdown complete")
-
+    close_db_connections()
+    logger.info("✅ MongoDB connections closed")
 
 # Initialize FastAPI application
 app = FastAPI(

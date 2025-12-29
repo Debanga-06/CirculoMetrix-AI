@@ -1,9 +1,9 @@
 """
-PDF and HTML Report Generation Service
-Generates professional sustainability reports
+PDF and HTML Report Generation Service with MongoDB Integration
+Generates professional sustainability reports and stores metadata in MongoDB
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
 import logging
@@ -19,6 +19,10 @@ from reportlab.platypus import (
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.pdfgen import canvas
 
+from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import MongoClient
+from bson import ObjectId
+
 from core.config import settings
 
 # Configure logging
@@ -27,24 +31,52 @@ logger = logging.getLogger(__name__)
 
 class PDFGenerator:
     """
-    PDF and HTML report generator for sustainability reports
+    PDF and HTML report generator with MongoDB integration
     """
     
-    def __init__(self):
-        """Initialize PDF generator"""
+    def __init__(self, mongodb_uri: str = None, db_name: str = "sustainability_reports"):
+        """
+        Initialize PDF generator with MongoDB connection
+        
+        Args:
+            mongodb_uri: MongoDB connection URI
+            db_name: Database name
+        """
         self.output_dir = Path(settings.REPORT_OUTPUT_PATH)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        logger.info("PDF Generator initialized")
+        
+        # MongoDB setup
+        self.mongodb_uri = mongodb_uri or settings.database_url
+        self.db_name = db_name
+        self.client = MongoClient(self.mongodb_uri)
+        self.db = self.client[self.db_name]
+        self.reports_collection = self.db['reports']
+        
+        # Create indexes
+        self._create_indexes()
+        
+        logger.info("PDF Generator with MongoDB initialized")
     
-    def generate_pdf_report(self, report_data: Dict[str, Any]) -> str:
+    def _create_indexes(self):
+        """Create MongoDB indexes for efficient queries"""
+        try:
+            self.reports_collection.create_index("report_id", unique=True)
+            self.reports_collection.create_index("project_name")
+            self.reports_collection.create_index("generated_at")
+            self.reports_collection.create_index([("project_name", 1), ("generated_at", -1)])
+            logger.info("MongoDB indexes created")
+        except Exception as e:
+            logger.error(f"Error creating indexes: {str(e)}")
+    
+    def generate_pdf_report(self, report_data: Dict[str, Any]) -> Dict[str, str]:
         """
-        Generate PDF sustainability report
+        Generate PDF sustainability report and save metadata to MongoDB
         
         Args:
             report_data: Report data dictionary
             
         Returns:
-            Path to generated PDF file
+            Dictionary with file paths and MongoDB document ID
         """
         try:
             logger.info(f"Generating PDF report: {report_data['report_id']}")
@@ -261,22 +293,33 @@ class PDFGenerator:
             # Build PDF
             doc.build(story)
             
+            # Save metadata to MongoDB
+            mongo_doc_id = self._save_report_metadata(
+                report_data=report_data,
+                pdf_path=str(filepath),
+                html_path=None
+            )
+            
             logger.info(f"PDF report generated: {filepath}")
-            return str(filepath)
+            return {
+                "pdf_path": str(filepath),
+                "mongo_id": str(mongo_doc_id),
+                "report_id": report_data['report_id']
+            }
             
         except Exception as e:
             logger.error(f"Error generating PDF report: {str(e)}")
             raise
     
-    def generate_html_report(self, report_data: Dict[str, Any]) -> str:
+    def generate_html_report(self, report_data: Dict[str, Any]) -> Dict[str, str]:
         """
-        Generate HTML sustainability report
+        Generate HTML sustainability report and save metadata to MongoDB
         
         Args:
             report_data: Report data dictionary
             
         Returns:
-            Path to generated HTML file
+            Dictionary with file path and MongoDB document ID
         """
         try:
             logger.info(f"Generating HTML report: {report_data['report_id']}")
@@ -365,12 +408,195 @@ class PDFGenerator:
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(html_content)
             
+            # Save metadata to MongoDB
+            mongo_doc_id = self._save_report_metadata(
+                report_data=report_data,
+                pdf_path=None,
+                html_path=str(filepath)
+            )
+            
             logger.info(f"HTML report generated: {filepath}")
-            return str(filepath)
+            return {
+                "html_path": str(filepath),
+                "mongo_id": str(mongo_doc_id),
+                "report_id": report_data['report_id']
+            }
             
         except Exception as e:
             logger.error(f"Error generating HTML report: {str(e)}")
             raise
+    
+    def _save_report_metadata(
+        self, 
+        report_data: Dict[str, Any], 
+        pdf_path: Optional[str] = None,
+        html_path: Optional[str] = None
+    ) -> ObjectId:
+        """
+        Save report metadata to MongoDB
+        
+        Args:
+            report_data: Report data dictionary
+            pdf_path: Path to PDF file (if generated)
+            html_path: Path to HTML file (if generated)
+            
+        Returns:
+            MongoDB document ObjectId
+        """
+        try:
+            document = {
+                "report_id": report_data['report_id'],
+                "project_name": report_data['project_name'],
+                "generated_at": report_data['generated_at'],
+                "pdf_path": pdf_path,
+                "html_path": html_path,
+                "lca_summary": {
+                    "total_co2_emissions": report_data['lca_result']['total_co2_emissions'],
+                    "co2_per_unit": report_data['lca_result']['co2_per_unit'],
+                    "energy_consumption": report_data['lca_result']['energy_consumption'],
+                    "water_usage": report_data['lca_result']['water_usage']
+                },
+                "input_parameters": report_data['lca_input'],
+                "has_recommendations": bool(report_data.get('recommendations')),
+                "has_comparisons": bool(report_data.get('comparisons')),
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+            
+            result = self.reports_collection.insert_one(document)
+            logger.info(f"Report metadata saved to MongoDB: {result.inserted_id}")
+            return result.inserted_id
+            
+        except Exception as e:
+            logger.error(f"Error saving report metadata: {str(e)}")
+            raise
+    
+    def get_report_by_id(self, report_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve report metadata by report_id
+        
+        Args:
+            report_id: Report ID
+            
+        Returns:
+            Report document or None
+        """
+        try:
+            report = self.reports_collection.find_one({"report_id": report_id})
+            if report:
+                report['_id'] = str(report['_id'])
+            return report
+        except Exception as e:
+            logger.error(f"Error retrieving report: {str(e)}")
+            return None
+    
+    def get_reports_by_project(self, project_name: str, limit: int = 10) -> list:
+        """
+        Get all reports for a specific project
+        
+        Args:
+            project_name: Project name
+            limit: Maximum number of reports to return
+            
+        Returns:
+            List of report documents
+        """
+        try:
+            reports = list(
+                self.reports_collection
+                .find({"project_name": project_name})
+                .sort("generated_at", -1)
+                .limit(limit)
+            )
+            for report in reports:
+                report['_id'] = str(report['_id'])
+            return reports
+        except Exception as e:
+            logger.error(f"Error retrieving reports: {str(e)}")
+            return []
+    
+    def get_recent_reports(self, limit: int = 20) -> list:
+        """
+        Get most recent reports
+        
+        Args:
+            limit: Maximum number of reports to return
+            
+        Returns:
+            List of report documents
+        """
+        try:
+            reports = list(
+                self.reports_collection
+                .find()
+                .sort("generated_at", -1)
+                .limit(limit)
+            )
+            for report in reports:
+                report['_id'] = str(report['_id'])
+            return reports
+        except Exception as e:
+            logger.error(f"Error retrieving recent reports: {str(e)}")
+            return []
+    
+    def update_report_metadata(self, report_id: str, updates: Dict[str, Any]) -> bool:
+        """
+        Update report metadata
+        
+        Args:
+            report_id: Report ID
+            updates: Dictionary of fields to update
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            updates['updated_at'] = datetime.utcnow()
+            result = self.reports_collection.update_one(
+                {"report_id": report_id},
+                {"$set": updates}
+            )
+            return result.modified_count > 0
+        except Exception as e:
+            logger.error(f"Error updating report: {str(e)}")
+            return False
+    
+    def delete_report(self, report_id: str, delete_files: bool = False) -> bool:
+        """
+        Delete report metadata and optionally files
+        
+        Args:
+            report_id: Report ID
+            delete_files: Whether to delete the physical files
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Get report to find file paths
+            report = self.get_report_by_id(report_id)
+            if not report:
+                return False
+            
+            # Delete files if requested
+            if delete_files:
+                if report.get('pdf_path'):
+                    Path(report['pdf_path']).unlink(missing_ok=True)
+                if report.get('html_path'):
+                    Path(report['html_path']).unlink(missing_ok=True)
+            
+            # Delete from MongoDB
+            result = self.reports_collection.delete_one({"report_id": report_id})
+            return result.deleted_count > 0
+            
+        except Exception as e:
+            logger.error(f"Error deleting report: {str(e)}")
+            return False
+    
+    def close(self):
+        """Close MongoDB connection"""
+        self.client.close()
+        logger.info("MongoDB connection closed")
 
 
 # Global PDF generator instance

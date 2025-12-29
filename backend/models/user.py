@@ -1,16 +1,40 @@
 """
-User Database Model
-SQLAlchemy model for user management
+User Database Model for MongoDB
+Document model for user management and authentication
 """
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum as SQLEnum
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
-from datetime import datetime
+from pydantic import BaseModel, EmailStr, Field, validator
+from typing import Optional, List
+from datetime import datetime, timedelta
+from bson import ObjectId
 import enum
 
-from core.database import Base
 
+# ==========================================
+# PyObjectId Handler for MongoDB
+# ==========================================
+
+class PyObjectId(ObjectId):
+    """Custom ObjectId type for Pydantic"""
+    
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
+    
+    @classmethod
+    def validate(cls, v):
+        if not ObjectId.is_valid(v):
+            raise ValueError("Invalid ObjectId")
+        return ObjectId(v)
+    
+    @classmethod
+    def __modify_schema__(cls, field_schema):
+        field_schema.update(type="string")
+
+
+# ==========================================
+# User Role Enumeration
+# ==========================================
 
 class UserRole(str, enum.Enum):
     """User role enumeration"""
@@ -19,81 +43,110 @@ class UserRole(str, enum.Enum):
     VIEWER = "viewer"
 
 
-class User(Base):
+# ==========================================
+# User Document Model
+# ==========================================
+
+class UserDocument(BaseModel):
     """
-    User model for authentication and authorization
+    User document model for MongoDB
+    Handles authentication and authorization
     """
-    __tablename__ = "users"
     
-    # Primary Key
-    id = Column(Integer, primary_key=True, index=True)
+    # MongoDB ID
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     
     # User Information
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    username = Column(String(100), unique=True, index=True, nullable=False)
-    full_name = Column(String(255), nullable=True)
+    email: EmailStr = Field(..., description="User email address (unique)")
+    username: str = Field(..., min_length=3, max_length=100, description="Username (unique)")
+    full_name: Optional[str] = Field(None, max_length=255)
     
     # Authentication
-    hashed_password = Column(String(255), nullable=False)
+    hashed_password: str = Field(..., description="Bcrypt hashed password")
     
     # Role and Permissions
-    role = Column(SQLEnum(UserRole), default=UserRole.USER, nullable=False)
-    is_active = Column(Boolean, default=True, nullable=False)
-    is_verified = Column(Boolean, default=False, nullable=False)
+    role: UserRole = Field(default=UserRole.USER, description="User role")
+    is_active: bool = Field(default=True, description="Account active status")
+    is_verified: bool = Field(default=False, description="Email verification status")
     
     # Company Information
-    company_name = Column(String(255), nullable=True)
-    company_industry = Column(String(100), nullable=True)
+    company_name: Optional[str] = Field(None, max_length=255)
+    company_industry: Optional[str] = Field(None, max_length=100)
     
     # API Access
-    api_key = Column(String(255), unique=True, nullable=True, index=True)
-    api_key_created_at = Column(DateTime(timezone=True), nullable=True)
+    api_key: Optional[str] = Field(None, description="API key for programmatic access")
+    api_key_created_at: Optional[datetime] = None
     
     # Subscription/Plan
-    subscription_tier = Column(String(50), default="free", nullable=False)
-    subscription_expires_at = Column(DateTime(timezone=True), nullable=True)
+    subscription_tier: str = Field(default="free", max_length=50, description="Subscription tier")
+    subscription_expires_at: Optional[datetime] = None
     
     # Usage Tracking
-    total_lca_calculations = Column(Integer, default=0, nullable=False)
-    total_reports_generated = Column(Integer, default=0, nullable=False)
-    last_login_at = Column(DateTime(timezone=True), nullable=True)
+    total_lca_calculations: int = Field(default=0, ge=0)
+    total_reports_generated: int = Field(default=0, ge=0)
+    last_login_at: Optional[datetime] = None
     
     # Timestamps
-    created_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False
-    )
-    updated_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False
-    )
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # Relationships
-    projects = relationship("Project", back_populates="user", cascade="all, delete-orphan")
+    class Config:
+        allow_population_by_field_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {
+            ObjectId: str,
+            datetime: lambda v: v.isoformat()
+        }
+        use_enum_values = True
+        json_schema_extra = {
+            "example": {
+                "email": "user@example.com",
+                "username": "johndoe",
+                "full_name": "John Doe",
+                "role": "user",
+                "is_active": True,
+                "is_verified": True,
+                "company_name": "Green Industries Inc.",
+                "company_industry": "Manufacturing",
+                "subscription_tier": "free"
+            }
+        }
     
-    def __repr__(self):
-        return f"<User(id={self.id}, email={self.email}, role={self.role})>"
+    def to_dict(self, include_sensitive: bool = False):
+        """
+        Convert user document to dictionary
+        
+        Args:
+            include_sensitive: Whether to include sensitive fields like hashed_password
+        """
+        data = self.dict(by_alias=True, exclude_none=True)
+        
+        # Convert ObjectId to string
+        if "_id" in data:
+            data["id"] = str(data["_id"])
+            del data["_id"]
+        
+        # Convert datetime to ISO format
+        for field in ["created_at", "updated_at", "last_login_at", "api_key_created_at", "subscription_expires_at"]:
+            if field in data and isinstance(data[field], datetime):
+                data[field] = data[field].isoformat()
+        
+        # Remove sensitive fields unless explicitly requested
+        if not include_sensitive:
+            data.pop("hashed_password", None)
+            data.pop("api_key", None)
+        
+        return data
     
-    def to_dict(self):
-        """Convert user to dictionary"""
+    def to_public_dict(self):
+        """Convert to public-safe dictionary (no sensitive data)"""
         return {
-            "id": self.id,
-            "email": self.email,
+            "id": str(self.id),
             "username": self.username,
             "full_name": self.full_name,
-            "role": self.role.value if self.role else None,
-            "is_active": self.is_active,
-            "is_verified": self.is_verified,
             "company_name": self.company_name,
-            "company_industry": self.company_industry,
             "subscription_tier": self.subscription_tier,
-            "total_lca_calculations": self.total_lca_calculations,
-            "total_reports_generated": self.total_reports_generated,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None
+            "created_at": self.created_at.isoformat() if self.created_at else None
         }
     
     @property
@@ -103,7 +156,7 @@ class User(Base):
     
     @property
     def is_premium(self) -> bool:
-        """Check if user has premium subscription"""
+        """Check if user has active premium subscription"""
         if not self.subscription_expires_at:
             return False
         return datetime.utcnow() < self.subscription_expires_at
@@ -111,21 +164,22 @@ class User(Base):
     def increment_lca_count(self):
         """Increment LCA calculation count"""
         self.total_lca_calculations += 1
+        self.updated_at = datetime.utcnow()
     
     def increment_report_count(self):
         """Increment report generation count"""
         self.total_reports_generated += 1
+        self.updated_at = datetime.utcnow()
     
     def update_last_login(self):
         """Update last login timestamp"""
         self.last_login_at = datetime.utcnow()
+        self.updated_at = datetime.utcnow()
 
 
-# Pydantic schemas for API
-
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
-
+# ==========================================
+# Pydantic Schemas for API
+# ==========================================
 
 class UserCreateSchema(BaseModel):
     """Schema for user registration"""
@@ -136,8 +190,28 @@ class UserCreateSchema(BaseModel):
     company_name: Optional[str] = None
     company_industry: Optional[str] = None
     
+    @validator('username')
+    def validate_username(cls, v):
+        """Validate username format"""
+        if not v.isalnum() and '_' not in v and '-' not in v:
+            raise ValueError("Username can only contain letters, numbers, underscores, and hyphens")
+        return v.lower()
+    
+    @validator('password')
+    def validate_password(cls, v):
+        """Validate password strength"""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.islower() for c in v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
+    
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "email": "user@example.com",
                 "username": "johndoe",
@@ -155,7 +229,7 @@ class UserLoginSchema(BaseModel):
     password: str
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "email": "user@example.com",
                 "password": "SecurePassword123!"
@@ -165,12 +239,12 @@ class UserLoginSchema(BaseModel):
 
 class UserUpdateSchema(BaseModel):
     """Schema for updating user profile"""
-    full_name: Optional[str] = None
-    company_name: Optional[str] = None
-    company_industry: Optional[str] = None
+    full_name: Optional[str] = Field(None, max_length=255)
+    company_name: Optional[str] = Field(None, max_length=255)
+    company_industry: Optional[str] = Field(None, max_length=100)
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "full_name": "John Doe",
                 "company_name": "Green Industries Inc.",
@@ -181,7 +255,7 @@ class UserUpdateSchema(BaseModel):
 
 class UserResponseSchema(BaseModel):
     """Schema for user response"""
-    id: int
+    id: str
     email: str
     username: str
     full_name: Optional[str]
@@ -189,16 +263,17 @@ class UserResponseSchema(BaseModel):
     is_active: bool
     is_verified: bool
     company_name: Optional[str]
+    company_industry: Optional[str]
     subscription_tier: str
     total_lca_calculations: int
     total_reports_generated: int
     created_at: str
+    last_login_at: Optional[str] = None
     
     class Config:
-        orm_mode = True
-        schema_extra = {
+        json_schema_extra = {
             "example": {
-                "id": 1,
+                "id": "507f1f77bcf86cd799439011",
                 "email": "user@example.com",
                 "username": "johndoe",
                 "full_name": "John Doe",
@@ -206,10 +281,12 @@ class UserResponseSchema(BaseModel):
                 "is_active": True,
                 "is_verified": True,
                 "company_name": "Green Industries Inc.",
+                "company_industry": "Manufacturing",
                 "subscription_tier": "free",
                 "total_lca_calculations": 42,
                 "total_reports_generated": 15,
-                "created_at": "2024-01-15T10:30:00"
+                "created_at": "2024-01-15T10:30:00",
+                "last_login_at": "2024-01-20T14:25:00"
             }
         }
 
@@ -221,7 +298,7 @@ class TokenSchema(BaseModel):
     token_type: str = "bearer"
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
@@ -235,10 +312,164 @@ class PasswordChangeSchema(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=8)
     
+    @validator('new_password')
+    def validate_password(cls, v):
+        """Validate password strength"""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.islower() for c in v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
+    
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "current_password": "OldPassword123!",
                 "new_password": "NewSecurePassword456!"
             }
         }
+
+
+class PasswordResetRequestSchema(BaseModel):
+    """Schema for password reset request"""
+    email: EmailStr
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "email": "user@example.com"
+            }
+        }
+
+
+class PasswordResetSchema(BaseModel):
+    """Schema for password reset with token"""
+    token: str
+    new_password: str = Field(..., min_length=8)
+    
+    @validator('new_password')
+    def validate_password(cls, v):
+        """Validate password strength"""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.islower() for c in v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "token": "reset_token_abc123",
+                "new_password": "NewSecurePassword456!"
+            }
+        }
+
+
+class APIKeyResponseSchema(BaseModel):
+    """Schema for API key response"""
+    api_key: str
+    created_at: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "api_key": "cmx_1234567890abcdef",
+                "created_at": "2024-01-15T10:30:00"
+            }
+        }
+
+
+# ==========================================
+# MongoDB Collection Helper
+# ==========================================
+
+def get_users_collection(db):
+    """
+    Get users collection with indexes
+    
+    Args:
+        db: MongoDB database instance
+        
+    Returns:
+        MongoDB collection
+    """
+    collection = db.users
+    
+    # Create unique indexes
+    collection.create_index("email", unique=True)
+    collection.create_index("username", unique=True)
+    collection.create_index("api_key", unique=True, sparse=True)
+    
+    # Create other indexes
+    collection.create_index("role")
+    collection.create_index("subscription_tier")
+    collection.create_index("is_active")
+    collection.create_index("created_at")
+    
+    return collection
+
+
+# ==========================================
+# CRUD Helper Functions
+# ==========================================
+
+def user_document_helper(user) -> dict:
+    """
+    Convert MongoDB user document to dictionary
+    
+    Args:
+        user: MongoDB document
+        
+    Returns:
+        Dictionary representation (without sensitive data)
+    """
+    if not user:
+        return None
+    
+    return {
+        "id": str(user["_id"]),
+        "email": user["email"],
+        "username": user["username"],
+        "full_name": user.get("full_name"),
+        "role": user.get("role", "user"),
+        "is_active": user.get("is_active", True),
+        "is_verified": user.get("is_verified", False),
+        "company_name": user.get("company_name"),
+        "company_industry": user.get("company_industry"),
+        "subscription_tier": user.get("subscription_tier", "free"),
+        "total_lca_calculations": user.get("total_lca_calculations", 0),
+        "total_reports_generated": user.get("total_reports_generated", 0),
+        "created_at": user["created_at"].isoformat() if isinstance(user.get("created_at"), datetime) else user.get("created_at"),
+        "last_login_at": user["last_login_at"].isoformat() if isinstance(user.get("last_login_at"), datetime) else user.get("last_login_at")
+    }
+
+
+def user_public_helper(user) -> dict:
+    """
+    Convert MongoDB user document to public dictionary
+    
+    Args:
+        user: MongoDB document
+        
+    Returns:
+        Public-safe dictionary
+    """
+    if not user:
+        return None
+    
+    return {
+        "id": str(user["_id"]),
+        "username": user["username"],
+        "full_name": user.get("full_name"),
+        "company_name": user.get("company_name"),
+        "subscription_tier": user.get("subscription_tier", "free"),
+        "created_at": user["created_at"].isoformat() if isinstance(user.get("created_at"), datetime) else user.get("created_at")
+    }

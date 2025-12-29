@@ -1,15 +1,18 @@
 """
 AI/ML Prediction Engine
 Machine learning models for environmental impact prediction
+MongoDB compatible version with prediction history tracking
 """
 
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, List
 import numpy as np
 import pandas as pd
 import joblib
 import json
 import logging
 from pathlib import Path
+from datetime import datetime
+from bson import ObjectId
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
@@ -27,8 +30,14 @@ class AIEngine:
     Uses ensemble methods for accurate predictions
     """
     
-    def __init__(self):
-        """Initialize AI engine and load models"""
+    def __init__(self, db=None):
+        """
+        Initialize AI engine and load models
+        
+        Args:
+            db: MongoDB database instance (optional, for storing predictions)
+        """
+        self.db = db
         self.model = None
         self.scaler = None
         self.feature_columns = None
@@ -103,12 +112,19 @@ class AIEngine:
         
         logger.info("New models initialized")
     
-    def predict(self, input_data: AIPredictionInputSchema) -> AIPredictionResultSchema:
+    def predict(
+        self,
+        input_data: AIPredictionInputSchema,
+        user_id: Optional[str] = None,
+        save_prediction: bool = False
+    ) -> AIPredictionResultSchema:
         """
         Make predictions for environmental impact
         
         Args:
             input_data: Prediction input parameters
+            user_id: User ID for tracking predictions (optional)
+            save_prediction: Whether to save prediction to database
             
         Returns:
             Prediction results with confidence scores
@@ -118,36 +134,40 @@ class AIEngine:
             
             # If model is not trained, use heuristic prediction
             if not self.is_trained:
-                return self._heuristic_prediction(input_data)
+                result = self._heuristic_prediction(input_data)
+            else:
+                # Prepare features
+                features = self._prepare_features(input_data)
+                
+                # Scale features
+                features_scaled = self.scaler.transform([features])
+                
+                # Make prediction
+                co2_prediction = self.model.predict(features_scaled)[0]
+                
+                # Estimate energy consumption (correlated with CO2)
+                energy_prediction = self._estimate_energy(input_data, co2_prediction)
+                
+                # Calculate confidence score
+                confidence = self._calculate_confidence(input_data)
+                
+                # Calculate prediction range (confidence interval)
+                prediction_range = self._calculate_prediction_range(
+                    co2_prediction,
+                    energy_prediction,
+                    confidence
+                )
+                
+                result = AIPredictionResultSchema(
+                    predicted_co2_emissions=round(co2_prediction, 2),
+                    predicted_energy_consumption=round(energy_prediction, 2),
+                    confidence_score=round(confidence, 3),
+                    prediction_range=prediction_range
+                )
             
-            # Prepare features
-            features = self._prepare_features(input_data)
-            
-            # Scale features
-            features_scaled = self.scaler.transform([features])
-            
-            # Make prediction
-            co2_prediction = self.model.predict(features_scaled)[0]
-            
-            # Estimate energy consumption (correlated with CO2)
-            energy_prediction = self._estimate_energy(input_data, co2_prediction)
-            
-            # Calculate confidence score
-            confidence = self._calculate_confidence(input_data)
-            
-            # Calculate prediction range (confidence interval)
-            prediction_range = self._calculate_prediction_range(
-                co2_prediction,
-                energy_prediction,
-                confidence
-            )
-            
-            result = AIPredictionResultSchema(
-                predicted_co2_emissions=round(co2_prediction, 2),
-                predicted_energy_consumption=round(energy_prediction, 2),
-                confidence_score=round(confidence, 3),
-                prediction_range=prediction_range
-            )
+            # Save prediction to database if requested
+            if save_prediction and self.db is not None and user_id:
+                self._save_prediction_to_db(input_data, result, user_id)
             
             logger.info(f"Prediction completed: {result.predicted_co2_emissions} kg CO2")
             return result
@@ -356,6 +376,44 @@ class AIEngine:
             "energy_max": round(energy_prediction + energy_range, 2)
         }
     
+    def _save_prediction_to_db(
+        self,
+        input_data: AIPredictionInputSchema,
+        result: AIPredictionResultSchema,
+        user_id: str
+    ):
+        """
+        Save prediction to MongoDB for tracking and analytics
+        
+        Args:
+            input_data: Input parameters
+            result: Prediction results
+            user_id: User ID
+        """
+        try:
+            if self.db is None:
+                return
+            
+            prediction_doc = {
+                "user_id": user_id,
+                "input_data": input_data.dict(),
+                "predictions": {
+                    "co2_emissions": result.predicted_co2_emissions,
+                    "energy_consumption": result.predicted_energy_consumption,
+                    "confidence_score": result.confidence_score,
+                    "prediction_range": result.prediction_range
+                },
+                "model_version": "1.0",
+                "is_trained_model": self.is_trained,
+                "created_at": datetime.utcnow()
+            }
+            
+            self.db.predictions.insert_one(prediction_doc)
+            logger.debug("Prediction saved to database")
+            
+        except Exception as e:
+            logger.error(f"Error saving prediction to database: {str(e)}")
+    
     def train_model(self, training_data: pd.DataFrame) -> Dict[str, Any]:
         """
         Train the ML model with new data
@@ -401,8 +459,13 @@ class AIEngine:
                 "train_r2_score": round(train_score, 4),
                 "test_r2_score": round(test_score, 4),
                 "training_samples": len(X_train),
-                "test_samples": len(X_test)
+                "test_samples": len(X_test),
+                "trained_at": datetime.utcnow().isoformat()
             }
+            
+            # Save training metrics to database
+            if self.db is not None:
+                self._save_training_metrics(metrics)
             
             logger.info(f"Model training completed: Test R² = {test_score:.4f}")
             return metrics
@@ -414,6 +477,9 @@ class AIEngine:
     def _save_models(self):
         """Save trained models to disk"""
         try:
+            # Ensure directories exist
+            Path(settings.MODEL_PATH).parent.mkdir(parents=True, exist_ok=True)
+            
             joblib.dump(self.model, settings.MODEL_PATH)
             joblib.dump(self.scaler, settings.SCALER_PATH)
             
@@ -426,23 +492,146 @@ class AIEngine:
             logger.error(f"Error saving models: {str(e)}")
             raise
     
-    def batch_predict(self, input_list: list) -> list:
+    def _save_training_metrics(self, metrics: Dict[str, Any]):
+        """
+        Save training metrics to MongoDB
+        
+        Args:
+            metrics: Training metrics dictionary
+        """
+        try:
+            metrics_doc = {
+                "model_version": "1.0",
+                "metrics": metrics,
+                "feature_columns": self.feature_columns,
+                "created_at": datetime.utcnow()
+            }
+            
+            self.db.model_training_history.insert_one(metrics_doc)
+            logger.debug("Training metrics saved to database")
+            
+        except Exception as e:
+            logger.error(f"Error saving training metrics: {str(e)}")
+    
+    def batch_predict(
+        self,
+        input_list: List[AIPredictionInputSchema],
+        user_id: Optional[str] = None,
+        save_predictions: bool = False
+    ) -> List[AIPredictionResultSchema]:
         """
         Make batch predictions
         
         Args:
             input_list: List of AIPredictionInputSchema objects
+            user_id: User ID for tracking (optional)
+            save_predictions: Whether to save predictions to database
             
         Returns:
             List of prediction results
         """
         results = []
         for input_data in input_list:
-            result = self.predict(input_data)
+            result = self.predict(input_data, user_id, save_predictions)
             results.append(result)
         
+        logger.info(f"Batch prediction completed: {len(results)} predictions")
         return results
+    
+    def get_prediction_history(
+        self,
+        user_id: Optional[str] = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Get prediction history from database
+        
+        Args:
+            user_id: Filter by user ID (optional)
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of prediction documents
+        """
+        if self.db is None:
+            return []
+        
+        try:
+            query = {}
+            if user_id:
+                query["user_id"] = user_id
+            
+            predictions = list(
+                self.db.predictions
+                .find(query)
+                .sort("created_at", -1)
+                .limit(limit)
+            )
+            
+            # Convert ObjectId to string
+            for pred in predictions:
+                pred["id"] = str(pred.pop("_id"))
+                if "created_at" in pred:
+                    pred["created_at"] = pred["created_at"].isoformat()
+            
+            return predictions
+            
+        except Exception as e:
+            logger.error(f"Error retrieving prediction history: {str(e)}")
+            return []
+    
+    def get_model_info(self) -> Dict[str, Any]:
+        """
+        Get information about the current model
+        
+        Returns:
+            Model information dictionary
+        """
+        info = {
+            "is_trained": self.is_trained,
+            "model_type": type(self.model).__name__ if self.model else None,
+            "feature_columns": self.feature_columns,
+            "model_path": str(settings.MODEL_PATH),
+            "scaler_path": str(settings.SCALER_PATH)
+        }
+        
+        if self.is_trained and self.model:
+            info["n_estimators"] = getattr(self.model, 'n_estimators', None)
+            info["max_depth"] = getattr(self.model, 'max_depth', None)
+        
+        return info
 
 
-# Global AI engine instance
-ai_engine = AIEngine()
+# Factory function to create AI engine instance
+def create_ai_engine(db=None) -> AIEngine:
+    """
+    Create and return AI engine instance
+    
+    Args:
+        db: MongoDB database instance (optional)
+        
+    Returns:
+        AIEngine instance
+    """
+    return AIEngine(db=db)
+
+
+# Global AI engine instance (can be initialized with db later)
+ai_engine = None
+
+def get_ai_engine(db=None) -> AIEngine:
+    """
+    Get or create global AI engine instance
+    
+    Args:
+        db: MongoDB database instance (optional)
+        
+    Returns:
+        AIEngine instance
+    """
+    global ai_engine
+    if ai_engine is None:
+        ai_engine = AIEngine(db=db)
+    elif db is not None and ai_engine.db is None:
+        ai_engine.db = db
+    return ai_engine

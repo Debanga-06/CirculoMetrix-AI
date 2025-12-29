@@ -1,12 +1,10 @@
 """
-AI Prediction API Router
+AI Prediction API Router - Fixed with Fallback
 Endpoints for AI-powered environmental impact predictions
 """
-
 from fastapi import APIRouter, HTTPException, status
 from typing import Dict, Any, List
 import logging
-
 from models.schemas import AIPredictionInputSchema, AIPredictionResultSchema
 from services.ai_engine import ai_engine
 from core.utils import success_response
@@ -17,6 +15,112 @@ logger = logging.getLogger(__name__)
 # Create router
 router = APIRouter()
 
+
+# ==================== HELPER FUNCTIONS ====================
+
+def calculate_heuristic_prediction(input_data: AIPredictionInputSchema) -> AIPredictionResultSchema:
+    """
+    Fallback heuristic-based prediction when ML model is not available
+    Uses domain knowledge and emission factors
+    """
+    # Material emission factors (kg CO2 per kg material)
+    emission_factors = {
+        "aluminium": 1.67,
+        "aluminum": 1.67,
+        "copper": 2.55,
+        "steel": 1.85,
+        "plastic": 2.0,
+        "default": 1.5
+    }
+    
+    # Energy source multipliers
+    energy_multipliers = {
+        "renewable": 0.3,
+        "fossil": 1.5,
+        "grid_average": 1.0,
+        "nuclear": 0.4,
+        "hydro": 0.2,
+        "solar": 0.25,
+        "wind": 0.25
+    }
+    
+    # Get base emission factor
+    material_str = input_data.material.value if hasattr(input_data.material, 'value') else str(input_data.material)
+    base_emissions = emission_factors.get(material_str.lower(), emission_factors["default"])
+    
+    # Get energy multiplier
+    energy_str = input_data.energy_source.value if hasattr(input_data.energy_source, 'value') else str(input_data.energy_source)
+    energy_mult = energy_multipliers.get(energy_str.lower(), 1.0)
+    
+    # Calculate CO2 emissions
+    # Base calculation
+    co2_emissions = base_emissions * input_data.production_volume
+    
+    # Apply energy source impact
+    co2_emissions *= energy_mult
+    
+    # Apply recycled content benefit (reduces emissions)
+    recycled_benefit = 1.0 - (input_data.recycled_content / 100 * 0.5)
+    co2_emissions *= recycled_benefit
+    
+    # Apply process efficiency
+    efficiency_factor = 1.0 - (input_data.process_efficiency / 100 * 0.2)
+    co2_emissions *= efficiency_factor
+    
+    # Calculate energy consumption (rough estimate: MJ per kg material)
+    energy_per_kg = {
+        "aluminium": 54,
+        "aluminum": 54,
+        "copper": 60,
+        "steel": 20,
+        "plastic": 40,
+        "default": 35
+    }
+    
+    base_energy = energy_per_kg.get(material_str.lower(), energy_per_kg["default"])
+    energy_consumption = base_energy * input_data.production_volume
+    energy_consumption *= (1.0 - input_data.recycled_content / 100 * 0.4)
+    energy_consumption *= efficiency_factor
+    
+    # Calculate confidence (heuristic-based is less confident)
+    confidence = 0.75
+    if material_str.lower() in ["aluminium", "aluminum", "steel", "copper"]:
+        confidence += 0.05
+    if 20 <= input_data.recycled_content <= 80:
+        confidence += 0.05
+    if 60 <= input_data.process_efficiency <= 95:
+        confidence += 0.05
+    
+    # Calculate prediction range
+    uncertainty = 0.15  # 15% uncertainty
+    min_co2 = co2_emissions * (1 - uncertainty)
+    max_co2 = co2_emissions * (1 + uncertainty)
+    
+    return AIPredictionResultSchema(
+        predicted_co2_emissions=round(co2_emissions, 2),
+        predicted_energy_consumption=round(energy_consumption, 2),
+        confidence_score=round(confidence, 2),
+        prediction_range={
+            "min": round(min_co2, 2),
+            "max": round(max_co2, 2)
+        },
+        feature_importance={
+            "material_type": 0.35,
+            "production_volume": 0.30,
+            "energy_source": 0.20,
+            "recycled_content": 0.10,
+            "process_efficiency": 0.05
+        },
+        model_version="heuristic-v1.0"
+    )
+
+
+def check_ai_engine_available() -> bool:
+    """Check if AI engine is available and properly initialized"""
+    return ai_engine is not None and hasattr(ai_engine, 'predict')
+
+
+# ==================== API ENDPOINTS ====================
 
 @router.post("/predict", response_model=Dict[str, Any])
 async def predict_environmental_impact(input_data: AIPredictionInputSchema):
@@ -55,18 +159,31 @@ async def predict_environmental_impact(input_data: AIPredictionInputSchema):
                 detail="Process efficiency must be between 0 and 100"
             )
         
-        # Make prediction
-        result = ai_engine.predict(input_data)
+        # Check if AI engine is available
+        if check_ai_engine_available():
+            try:
+                # Try to use ML model
+                result = ai_engine.predict(input_data)
+                model_status = "trained"
+            except Exception as ml_error:
+                logger.warning(f"ML prediction failed, using heuristic: {ml_error}")
+                result = calculate_heuristic_prediction(input_data)
+                model_status = "heuristic"
+        else:
+            # Use heuristic fallback
+            logger.info("AI engine not available, using heuristic prediction")
+            result = calculate_heuristic_prediction(input_data)
+            model_status = "heuristic"
         
         return success_response(
             data=result.dict(),
             message="Prediction completed successfully",
             meta={
-                "model_status": "trained" if ai_engine.is_trained else "heuristic",
+                "model_status": model_status,
                 "confidence_level": "high" if result.confidence_score > 0.85 else "medium"
             }
         )
-        
+    
     except HTTPException:
         raise
     except Exception as e:
@@ -98,7 +215,18 @@ async def batch_predict(inputs: List[AIPredictionInputSchema]):
             )
         
         # Make batch predictions
-        results = ai_engine.batch_predict(inputs)
+        results = []
+        
+        for input_data in inputs:
+            if check_ai_engine_available():
+                try:
+                    result = ai_engine.predict(input_data)
+                except Exception:
+                    result = calculate_heuristic_prediction(input_data)
+            else:
+                result = calculate_heuristic_prediction(input_data)
+            
+            results.append(result)
         
         # Convert to dict
         results_dict = [r.dict() for r in results]
@@ -110,7 +238,7 @@ async def batch_predict(inputs: List[AIPredictionInputSchema]):
             },
             message=f"Batch prediction completed for {len(results_dict)} items"
         )
-        
+    
     except HTTPException:
         raise
     except Exception as e:
@@ -130,28 +258,31 @@ async def get_model_info():
     - Model information including status and features
     """
     try:
+        is_trained = check_ai_engine_available() and getattr(ai_engine, 'is_trained', False)
+        
         info = {
-            "model_type": "Random Forest Regressor",
-            "is_trained": ai_engine.is_trained,
-            "features": ai_engine.feature_columns if ai_engine.feature_columns else [],
+            "model_type": "Random Forest Regressor" if is_trained else "Heuristic-based",
+            "is_trained": is_trained,
+            "features": getattr(ai_engine, 'feature_columns', []) if check_ai_engine_available() else [],
             "target_variables": [
                 "CO2 emissions (kg)",
                 "Energy consumption (MJ)"
             ],
-            "prediction_method": "ML-based" if ai_engine.is_trained else "Heuristic-based",
-            "average_confidence": 0.85 if ai_engine.is_trained else 0.75,
+            "prediction_method": "ML-based" if is_trained else "Heuristic-based",
+            "average_confidence": 0.85 if is_trained else 0.75,
             "supported_materials": ["aluminium", "aluminum", "copper", "steel"],
             "supported_energy_sources": [
                 "renewable", "fossil", "grid_average", 
                 "nuclear", "hydro", "solar", "wind"
-            ]
+            ],
+            "status": "operational" if check_ai_engine_available() else "fallback_mode"
         }
         
         return success_response(
             data=info,
             message="Model information retrieved successfully"
         )
-        
+    
     except Exception as e:
         logger.error(f"Error retrieving model info: {str(e)}")
         raise HTTPException(
@@ -161,9 +292,7 @@ async def get_model_info():
 
 
 @router.post("/compare-predictions", response_model=Dict[str, Any])
-async def compare_predictions(
-    scenarios: List[AIPredictionInputSchema]
-):
+async def compare_predictions(scenarios: List[AIPredictionInputSchema]):
     """
     Compare predictions for multiple scenarios
     
@@ -185,12 +314,24 @@ async def compare_predictions(
         # Make predictions for all scenarios
         predictions = []
         for i, scenario in enumerate(scenarios):
-            result = ai_engine.predict(scenario)
+            # Get prediction
+            if check_ai_engine_available():
+                try:
+                    result = ai_engine.predict(scenario)
+                except Exception:
+                    result = calculate_heuristic_prediction(scenario)
+            else:
+                result = calculate_heuristic_prediction(scenario)
+            
+            # Extract values safely
+            material_val = scenario.material.value if hasattr(scenario.material, 'value') else str(scenario.material)
+            energy_val = scenario.energy_source.value if hasattr(scenario.energy_source, 'value') else str(scenario.energy_source)
+            
             predictions.append({
                 "scenario_index": i + 1,
-                "material": scenario.material.value,
+                "material": material_val,
                 "production_volume": scenario.production_volume,
-                "energy_source": scenario.energy_source.value,
+                "energy_source": energy_val,
                 "recycled_content": scenario.recycled_content,
                 "predicted_co2": result.predicted_co2_emissions,
                 "predicted_energy": result.predicted_energy_consumption,
@@ -226,7 +367,7 @@ async def compare_predictions(
             data=comparison,
             message="Scenario comparison completed successfully"
         )
-        
+    
     except HTTPException:
         raise
     except Exception as e:
@@ -284,7 +425,13 @@ async def sensitivity_analysis(
             setattr(test_input, parameter, float(value))
             
             # Make prediction
-            prediction = ai_engine.predict(test_input)
+            if check_ai_engine_available():
+                try:
+                    prediction = ai_engine.predict(test_input)
+                except Exception:
+                    prediction = calculate_heuristic_prediction(test_input)
+            else:
+                prediction = calculate_heuristic_prediction(test_input)
             
             results.append({
                 f"{parameter}_value": round(float(value), 2),
@@ -292,7 +439,7 @@ async def sensitivity_analysis(
                 "predicted_energy": prediction.predicted_energy_consumption
             })
         
-        # Calculate sensitivity (change per unit)
+        # Calculate sensitivity
         if len(results) > 1:
             co2_change = results[-1]["predicted_co2"] - results[0]["predicted_co2"]
             param_change = results[-1][f"{parameter}_value"] - results[0][f"{parameter}_value"]
@@ -313,7 +460,7 @@ async def sensitivity_analysis(
             },
             message="Sensitivity analysis completed successfully"
         )
-        
+    
     except HTTPException:
         raise
     except Exception as e:
@@ -367,7 +514,7 @@ async def get_confidence_factors():
             data=factors,
             message="Confidence factors retrieved successfully"
         )
-        
+    
     except Exception as e:
         logger.error(f"Error retrieving confidence factors: {str(e)}")
         raise HTTPException(

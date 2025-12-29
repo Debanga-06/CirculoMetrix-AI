@@ -60,6 +60,8 @@ const Dashboard = () => {
         `${API_BASE_URL}/api/v1/ai/predict`,
         aiInput
       );
+      console.log('AI Prediction response data:', aiResponse.data.data);
+
 
       setResults({
         lca: lcaResponse.data.data,
@@ -125,41 +127,37 @@ const Dashboard = () => {
               <nav className="flex space-x-8 px-6" aria-label="Tabs">
                 <button
                   onClick={() => setActiveTab('lca')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'lca'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'lca'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
                 >
                   LCA Results
                 </button>
                 <button
                   onClick={() => setActiveTab('circularity')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'circularity'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'circularity'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
                 >
                   Circularity Metrics
                 </button>
                 <button
                   onClick={() => setActiveTab('recommendations')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'recommendations'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'recommendations'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
                 >
                   Recommendations
                 </button>
                 <button
                   onClick={() => setActiveTab('ai')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'ai'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'ai'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
                 >
                   AI Insights
                 </button>
@@ -177,7 +175,7 @@ const Dashboard = () => {
                   <h3 className="text-2xl font-bold text-gray-900">
                     Circular Economy Metrics
                   </h3>
-                  
+
                   {/* MCI Score */}
                   <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-lg p-6">
                     <div className="flex items-center justify-between">
@@ -195,8 +193,8 @@ const Dashboard = () => {
                         </div>
                       </div>
                       <div className="text-6xl">
-                        {results.circularity.mci_score >= 0.7 ? '🌟' : 
-                         results.circularity.mci_score >= 0.5 ? '✨' : '📊'}
+                        {results.circularity.mci_score >= 0.7 ? '🌟' :
+                          results.circularity.mci_score >= 0.5 ? '✨' : '📊'}
                       </div>
                     </div>
                   </div>
@@ -238,7 +236,7 @@ const Dashboard = () => {
                   <h3 className="text-2xl font-bold text-gray-900">
                     Sustainability Recommendations
                   </h3>
-                  
+
                   {/* Priority Actions */}
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
                     <h4 className="font-semibold text-blue-900 mb-3">
@@ -266,22 +264,20 @@ const Dashboard = () => {
                             {rec.title}
                           </h4>
                           <div className="flex gap-2">
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                              rec.impact === 'High' 
-                                ? 'bg-red-100 text-red-800'
-                                : rec.impact === 'Medium'
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${rec.impact === 'High'
+                              ? 'bg-red-100 text-red-800'
+                              : rec.impact === 'Medium'
                                 ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-green-100 text-green-800'
-                            }`}>
+                              }`}>
                               {rec.impact} Impact
                             </span>
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                              rec.implementation_difficulty === 'Easy'
-                                ? 'bg-green-100 text-green-800'
-                                : rec.implementation_difficulty === 'Medium'
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${rec.implementation_difficulty === 'Easy'
+                              ? 'bg-green-100 text-green-800'
+                              : rec.implementation_difficulty === 'Medium'
                                 ? 'bg-yellow-100 text-yellow-800'
                                 : 'bg-red-100 text-red-800'
-                            }`}>
+                              }`}>
                               {rec.implementation_difficulty}
                             </span>
                           </div>
@@ -316,7 +312,7 @@ const Dashboard = () => {
                   <h3 className="text-2xl font-bold text-gray-900">
                     AI Predictions & Insights
                   </h3>
-                  
+
                   <div className="grid md:grid-cols-2 gap-6">
                     <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-6">
                       <div className="text-sm text-gray-600 mb-2">
@@ -364,19 +360,23 @@ const Dashboard = () => {
                     <h4 className="font-semibold text-yellow-900 mb-3">
                       Prediction Range
                     </h4>
+
                     <div className="grid grid-cols-2 gap-4 text-sm">
+                      {/* CO₂ Range */}
                       <div>
                         <div className="text-yellow-700">CO₂ Range:</div>
                         <div className="font-medium text-yellow-900">
-                          {results.ai_prediction.prediction_range.co2_min.toFixed(2)} - {' '}
-                          {results.ai_prediction.prediction_range.co2_max.toFixed(2)} kg
+                          {results.ai_prediction?.prediction_range?.min?.toFixed(2)} -{' '}
+                          {results.ai_prediction?.prediction_range?.max?.toFixed(2)} kg
                         </div>
                       </div>
+
+                      {/* Energy Range (Estimated) */}
                       <div>
                         <div className="text-yellow-700">Energy Range:</div>
                         <div className="font-medium text-yellow-900">
-                          {results.ai_prediction.prediction_range.energy_min.toFixed(2)} - {' '}
-                          {results.ai_prediction.prediction_range.energy_max.toFixed(2)} MJ
+                          {(results.ai_prediction.predicted_energy_consumption * 0.85).toFixed(2)} -{' '}
+                          {(results.ai_prediction.predicted_energy_consumption * 1.15).toFixed(2)} MJ
                         </div>
                       </div>
                     </div>

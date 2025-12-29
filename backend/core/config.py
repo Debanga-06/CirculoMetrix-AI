@@ -1,19 +1,20 @@
 """
 Application configuration using Pydantic Settings
-Supports both development (SQLite) and production (PostgreSQL) environments
+Supports MongoDB Atlas for production and development environments
 """
 
 from pydantic_settings import BaseSettings
-from pydantic import Field, validator
 from typing import Optional, List
-import os
 from pathlib import Path
+from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
+
 
 
 class Settings(BaseSettings):
     """
     Application settings with environment variable support
-    Compatible with existing .env configuration
+    Compatible with existing .env configuration - now using MongoDB Atlas
     """
     
     # ==========================================
@@ -32,38 +33,52 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = Field(default="/api/v1", env="API_V1_PREFIX")
     
     # ==========================================
-    # Database Settings
+    # MongoDB Atlas Settings
     # ==========================================
-    # Support both individual DB settings and full DATABASE_URL
-    DB_HOST: Optional[str] = Field(default="localhost", env="DB_HOST")
-    DB_PORT: Optional[int] = Field(default=5432, env="DB_PORT")
-    DB_USER: Optional[str] = Field(default="circulometrix", env="DB_USER")
-    DB_PASSWORD: Optional[str] = Field(default="circulometrix_secure_2024", env="DB_PASSWORD")
-    DB_NAME: Optional[str] = Field(default="circulometrix_db", env="DB_NAME")
+    # MongoDB Atlas connection string
+    # Canonical DB URL
+    DATABASE_URL: str = Field(
+      default="mongodb://localhost:27017",
+      env="DATABASE_URL",
+      description="MongoDB connection string"
+    )
+
+    DATABASE_NAME: str = Field(
+    default="CirculoMetrix",
+    env="DATABASE_NAME",
+    description="MongoDB database name"
+    )
+
+
+# 🔁 Backward compatibility (IMPORTANT)
+    MONGODB_URI: Optional[str] = Field(
+      default=None,
+      env="MONGODB_URI",
+      description="Backward-compatible MongoDB URI"
+    )
     
-    # Full database URL (takes precedence if set)
-    DATABASE_URL: Optional[str] = Field(default=None, env="DATABASE_URL")
+    # Optional: Separate read connection for scaling
+    DATABASE_READ_URL: Optional[str] = Field(
+        default=None,
+        env="DATABASE_READ_URL",
+        description="Optional read-only MongoDB connection string"
+    )
     
     @property
     def database_url(self) -> str:
-        """
-        Get database URL - construct from parts if DATABASE_URL not set
-        Falls back to SQLite if PostgreSQL is not available
-        """
-        if self.DATABASE_URL:
-            return self.DATABASE_URL
-        
-        # Construct from individual settings
-        if all([self.DB_HOST, self.DB_PORT, self.DB_USER, self.DB_PASSWORD, self.DB_NAME]):
-            return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
-        
-        # Fallback to SQLite
-        return "sqlite:///./circulometrix.db"
+     return self.MONGODB_URI or self.DATABASE_URL
     
-    # PostgreSQL specific settings
-    DB_POOL_SIZE: int = Field(default=10, description="Database connection pool size")
-    DB_MAX_OVERFLOW: int = Field(default=20, description="Max overflow connections")
-    DB_POOL_RECYCLE: int = Field(default=3600, description="Connection recycle time in seconds")
+    @property
+    def database_name(self) -> str:
+        """Get database name"""
+        return self.DATABASE_NAME
+    
+    # MongoDB connection pool settings
+    MONGO_MAX_POOL_SIZE: int = Field(default=50, env="MONGO_MAX_POOL_SIZE")
+    MONGO_MIN_POOL_SIZE: int = Field(default=10, env="MONGO_MIN_POOL_SIZE")
+    MONGO_MAX_IDLE_TIME_MS: int = Field(default=30000, env="MONGO_MAX_IDLE_TIME_MS")
+    MONGO_SERVER_SELECTION_TIMEOUT_MS: int = Field(default=5000, env="MONGO_SERVER_SELECTION_TIMEOUT_MS")
+    MONGO_CONNECT_TIMEOUT_MS: int = Field(default=10000, env="MONGO_CONNECT_TIMEOUT_MS")
     
     # ==========================================
     # Security & Authentication
@@ -77,13 +92,15 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=7, env="REFRESH_TOKEN_EXPIRE_DAYS")
     BCRYPT_ROUNDS: int = Field(default=12, env="BCRYPT_ROUNDS")
     
-    @validator("SECRET_KEY")
-    def validate_secret_key(cls, v, values):
-        """Warn if using default secret key in production"""
-        environment = values.get("ENVIRONMENT", "development")
-        if environment == "production" and "change-this" in v:
-            raise ValueError("Must set a strong SECRET_KEY in production!")
-        return v
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, v, info):
+       """Warn if using default secret key in production"""
+       environment = info.data.get("ENVIRONMENT", "development")
+       if environment == "production" and "change-this" in v:
+           raise ValueError("Must set a strong SECRET_KEY in production!")
+       return v
+
     
     # ==========================================
     # CORS Settings
@@ -299,14 +316,15 @@ class Settings(BaseSettings):
         return self.ENVIRONMENT.lower() == "testing"
     
     def get_db_type(self) -> str:
-        """Get database type (sqlite, postgresql, etc.)"""
+        """Get database type"""
         db_url = self.database_url
-        if db_url.startswith("sqlite"):
-            return "sqlite"
-        elif db_url.startswith("postgresql"):
-            return "postgresql"
-        else:
-            return "unknown"
+        if "mongodb+srv://" in db_url or "mongodb://" in db_url:
+            return "mongodb"
+        return "unknown"
+    
+    def is_mongodb_atlas(self) -> bool:
+        """Check if using MongoDB Atlas"""
+        return "mongodb+srv://" in self.database_url or "mongodb.net" in self.database_url
     
     def print_config(self) -> None:
         """Print configuration summary (for debugging)"""
@@ -316,13 +334,15 @@ class Settings(BaseSettings):
         print(f"Environment:        {self.ENVIRONMENT}")
         print(f"Debug Mode:         {self.DEBUG}")
         print(f"Database Type:      {self.get_db_type()}")
-        print(f"Database Host:      {self.DB_HOST}:{self.DB_PORT}")
+        print(f"Database Name:      {self.DATABASE_NAME}")
+        print(f"MongoDB Atlas:      {'Yes' if self.is_mongodb_atlas() else 'No'}")
         print(f"API Endpoint:       http://{self.API_HOST}:{self.API_PORT}")
         print(f"API Prefix:         {self.API_V1_PREFIX}")
         print(f"CORS Origins:       {len(self.cors_origins)} configured")
         print(f"Cache Enabled:      {self.CACHE_ENABLED}")
         print(f"Log Level:          {self.LOG_LEVEL}")
         print(f"Max Upload:         {self.MAX_UPLOAD_SIZE_MB}MB")
+        print(f"Pool Size:          {self.MONGO_MAX_POOL_SIZE} (max)")
         print("=" * 60)
     
     def validate_paths(self) -> dict:
