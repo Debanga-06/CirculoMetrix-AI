@@ -31,13 +31,15 @@ async def init_db():
 
     try:
         async_client = AsyncIOMotorClient(
-            settings.MONGODB_URI,
-            serverSelectionTimeoutMS=5000,
+            settings.database_url,  # ✅ FIXED
+            serverSelectionTimeoutMS=settings.MONGO_SERVER_SELECTION_TIMEOUT_MS,
+            maxPoolSize=settings.MONGO_MAX_POOL_SIZE,
+            minPoolSize=settings.MONGO_MIN_POOL_SIZE,
         )
 
         async_db = async_client[settings.DATABASE_NAME]
 
-        # Fire-and-forget index creation
+        # Create indexes safely
         await _safe_create_indexes()
 
         logger.info("🍃 MongoDB Atlas connected")
@@ -54,6 +56,9 @@ async def _safe_create_indexes():
     global _indexes_created
 
     if _indexes_created:
+        return
+
+    if async_db is None:  # ✅ IMPORTANT
         return
 
     try:
@@ -81,6 +86,7 @@ async def get_async_db():
     if async_db is None:
         await init_db()
     return async_db
+
 
 # ==========================
 # Transactions
