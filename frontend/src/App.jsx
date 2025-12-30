@@ -126,13 +126,13 @@ function App() {
                 <h3 className="text-lg font-bold mb-4 text-white">Contact</h3>
                 <ul className="space-y-2 text-sm">
                   <li className="text-gray-300">
-                    Email: info@circulometrix.ai
+                    Email: squadsyntax72@gmail.com
                   </li>
                   <li className="text-gray-300">
-                    Support: support@circulometrix.ai
+                    Support: squadsyntax72@gmail.com
                   </li>
                   <li className="text-gray-300">
-                    Phone: +1 (555) 123-4567
+                    Phone: 7601993103 / 8389914302
                   </li>
                 </ul>
               </div>
