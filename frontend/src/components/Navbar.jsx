@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
+import logo2 from '../assets/logo2.png';
 
 const Navbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -25,7 +26,7 @@ const Navbar = () => {
             <img
               src={logo2}
               alt="CirculoMetrix AI Logo"
-              className="h-10 w-10 object-contain"
+              className="h-10 w-10 rounded-full object-cover"
             />
             <span className="text-xl font-bold text-gray-900">
               CirculoMetrix AI
