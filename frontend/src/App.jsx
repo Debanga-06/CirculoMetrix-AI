@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { Suspense, lazy } from 'react';
+import { Link } from "react-router-dom";
 
 // Lazy load pages for better performance
 const Home = lazy(() => import('./pages/Home'));
