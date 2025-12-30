@@ -75,7 +75,7 @@ CirculoMetrix AI is a comprehensive platform for Life Cycle Assessment (LCA) and
          │
     ┌────▼────┐
     │Database │
-    │(SQLite) │
+    │(MongoDB)│
     └─────────┘
 ```
 
@@ -93,7 +93,7 @@ CirculoMetrix AI is a comprehensive platform for Life Cycle Assessment (LCA) and
 
 ### Backend
 - **Framework**: FastAPI
-- **Database**: SQLAlchemy with SQLite/PostgreSQL
+- **Database**: MongoDB Atlas
 - **ML**: Scikit-learn, XGBoost
 - **Explainability**: SHAP
 - **PDF**: ReportLab
@@ -146,9 +146,9 @@ docker-compose up --build
 ```
 
 Access the application:
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
+- Frontend: [Link](https://circulometrix-ai.vercel.app)
+- Backend API: [Link](https://circulometrix-ai.onrender.com)
+- API Docs: [Link](https://circulometrix-ai.onrender.com/docs)
 
 ---
 
@@ -211,7 +211,7 @@ Content-Type: application/json
 }
 ```
 
-Full API documentation: http://localhost:8000/docs
+Full API documentation: [Link](https://circulometrix-ai.onrender.com/docs)
 
 ---
 
@@ -241,10 +241,7 @@ circulometrix-ai/
 │   ├── services/      # Business logic
 │   ├── models/        # Database models
 │   ├── ml_models/     # Trained ML models
-│   └── datasets/      # Reference data
-├── docs/              # Documentation
-├── scripts/           # Utility scripts
-└── deployment/        # Docker configs
+│  └── datasets/      # Reference data
 ```
 
 ---
@@ -319,9 +316,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📧 Contact
 
-- **Website**: https://circulometrix.ai
-- **Email**: contact@circulometrix.ai
-- **Documentation**: https://docs.circulometrix.ai
+- **Email**: www.squadsyntax72@gmail.com
 
 ---
 
