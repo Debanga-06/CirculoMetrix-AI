@@ -306,8 +306,8 @@ const About = () => {
           Join leading manufacturers in their sustainability journey
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <a
-            href="./dashboard"
+          <Link
+            to="/dashboard"
             className="inline-flex items-center gap-2 px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
           >
             Start Free Trial
