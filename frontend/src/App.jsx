@@ -93,23 +93,23 @@ function App() {
                 <h3 className="text-lg font-bold mb-4 text-white">Quick Links</h3>
                 <ul className="space-y-2">
                   <li>
-                    <a 
-                      href="./pages/Dashboard" 
+                    <a
+                      href="./pages/Dashboard"
                       className="text-gray-300 hover:text-white transition-colors text-sm"
                     >
                       Dashboard
                     </a>
                   </li>
                   <li>
-                    <a 
-                      href="./pages/About" 
+                    <a
+                      href="./pages/About"
                       className="text-gray-300 hover:text-white transition-colors text-sm"
                     >
                       About
                     </a>
                   </li>
                   <li>
-                    <a 
+                    <a
                       href="https://circulometrix-ai.onrender.com/docs"
                       target="_blank"
                       rel="noopener noreferrer"
@@ -126,27 +126,52 @@ function App() {
                 <h3 className="text-lg font-bold mb-4 text-white">Contact</h3>
                 <ul className="space-y-2 text-sm">
                   <li className="text-gray-300">
-                    Email: mailto:squadsyntax72@gmail.com
+                    Email:{" "}
+                    <a
+                      href="mailto:squadsyntax72@gmail.com"
+                      className="text-blue-400 hover:text-blue-300 underline"
+                    >
+                      squadsyntax72@gmail.com
+                    </a>
                   </li>
+
                   <li className="text-gray-300">
-                    Support: squadsyntax72@gmail.com
+                    Support:{" "}
+                    <a
+                      href="mailto:squadsyntax72@gmail.com"
+                      className="text-blue-400 hover:text-blue-300 underline"
+                    >
+                      squadsyntax72@gmail.com
+                    </a>
                   </li>
+
                   <li className="text-gray-300">
-                    Phone: 7601993103 / 8389914302
+                    Phone:{" "}
+                    <a
+                      href="tel:7601993103"
+                      className="text-blue-400 hover:text-blue-300"
+                    >
+                      7601993103
+                    </a>{" "}
+                    /{" "}
+                    <a
+                      href="tel:8389914302"
+                      className="text-blue-400 hover:text-blue-300"
+                    >
+                      8389914302
+                    </a>
                   </li>
                 </ul>
               </div>
+              <div className="border-t border-gray-700 mt-8 pt-8 text-center">
+                <p className="text-sm text-gray-400">
+                  © 2025 CirculoMetrix AI. All rights reserved.
+                </p>
+                <p className="text-sm text-gray-400 mt-2">
+                  Building a sustainable future through data-driven insights.
+                </p>
+              </div>
             </div>
-
-            <div className="border-t border-gray-700 mt-8 pt-8 text-center">
-              <p className="text-sm text-gray-400">
-                © 2025 CirculoMetrix AI. All rights reserved.
-              </p>
-              <p className="text-sm text-gray-400 mt-2">
-                Building a sustainable future through data-driven insights.
-              </p>
-            </div>
-          </div>
         </footer>
       </div>
     </Router>
