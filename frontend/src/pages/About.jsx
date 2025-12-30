@@ -311,7 +311,7 @@ const About = () => {
             className="inline-flex items-center gap-2 px-8 py-4 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
           >
             Start Free Trial
-          </a>
+          </Link>
           <a
             href="mailto:squadsyntax72@gmail.com"
             className="inline-flex items-center gap-2 px-8 py-4 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:border-blue-600 hover:text-blue-600 transition-colors"
