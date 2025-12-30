@@ -110,7 +110,7 @@ function App() {
                   </li>
                   <li>
                     <a 
-                      href="http://localhost:8000/docs"
+                      href="https://circulometrix-ai.onrender.com/docs"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-gray-300 hover:text-white transition-colors text-sm"
