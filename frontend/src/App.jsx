@@ -94,7 +94,7 @@ function App() {
                 <ul className="space-y-2">
                   <li>
                     <a 
-                      href="/dashboard" 
+                      href="./pages/Dashboard" 
                       className="text-gray-300 hover:text-white transition-colors text-sm"
                     >
                       Dashboard
@@ -102,7 +102,7 @@ function App() {
                   </li>
                   <li>
                     <a 
-                      href="/about" 
+                      href="./pages/About" 
                       className="text-gray-300 hover:text-white transition-colors text-sm"
                     >
                       About
@@ -140,7 +140,7 @@ function App() {
 
             <div className="border-t border-gray-700 mt-8 pt-8 text-center">
               <p className="text-sm text-gray-400">
-                © 2024 CirculoMetrix AI. All rights reserved.
+                © 2025 CirculoMetrix AI. All rights reserved.
               </p>
               <p className="text-sm text-gray-400 mt-2">
                 Building a sustainable future through data-driven insights.
