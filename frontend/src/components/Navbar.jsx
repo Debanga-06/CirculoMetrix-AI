@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useState } from 'react';
-import { Menu, X, Leaf } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 
 const Navbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -22,9 +22,11 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <Leaf className="w-6 h-6 text-white" />
-            </div>
+            <img
+              src={logo2}
+              alt="CirculoMetrix AI Logo"
+              className="h-10 w-10 object-contain"
+            />
             <span className="text-xl font-bold text-gray-900">
               CirculoMetrix AI
             </span>
