@@ -95,7 +95,7 @@ function App() {
                 <ul className="space-y-2">
                   <li>
                     <a
-                      href="./pages/Dashboard"
+                      href="/Dashboard"
                       className="text-gray-300 hover:text-white transition-colors text-sm"
                     >
                       Dashboard
@@ -103,7 +103,7 @@ function App() {
                   </li>
                   <li>
                     <a
-                      href="./pages/About"
+                      href="/About"
                       className="text-gray-300 hover:text-white transition-colors text-sm"
                     >
                       About
