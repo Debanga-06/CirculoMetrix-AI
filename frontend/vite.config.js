@@ -36,7 +36,7 @@ export default defineConfig({
     port: 5173,
     host: true, // Listen on all addresses
     strictPort: true, // Exit if port is already in use
-    open: true, // Open browser on server start
+    open: false,
     cors: true,
     
     // Proxy API requests to backend
