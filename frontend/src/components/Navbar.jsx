@@ -47,7 +47,7 @@ const Navbar = () => {
             ))}
             
             <a
-              href="http://localhost:8000/docs"
+              href="https://circulometrix-ai.onrender.com/docs"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors"
@@ -99,7 +99,7 @@ const Navbar = () => {
             ))}
             
             <a
-              href="http://localhost:8000/docs"
+              href="https://circulometrix-ai.onrender.com/docs"
               target="_blank"
               rel="noopener noreferrer"
               className="block px-3 py-2 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-50"
