@@ -126,7 +126,7 @@ function App() {
                 <h3 className="text-lg font-bold mb-4 text-white">Contact</h3>
                 <ul className="space-y-2 text-sm">
                   <li className="text-gray-300">
-                    Email: squadsyntax72@gmail.com
+                    Email: mailto:squadsyntax72@gmail.com
                   </li>
                   <li className="text-gray-300">
                     Support: squadsyntax72@gmail.com
