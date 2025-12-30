@@ -312,7 +312,7 @@ const About = () => {
             Start Free Trial
           </a>
           <a
-            href="mailto:contact@circulometrix.ai"
+            href="mailto:squadsyntax72@gmail.com"
             className="inline-flex items-center gap-2 px-8 py-4 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:border-blue-600 hover:text-blue-600 transition-colors"
           >
             Contact Sales
