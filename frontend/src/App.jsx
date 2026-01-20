@@ -176,7 +176,7 @@ function App() {
             {/* Footer Bottom */}
             <div className="border-t border-gray-700 mt-8 pt-8 text-center">
               <p className="text-sm text-gray-400">
-                © 2025 CirculoMetrix AI. All rights reserved.
+                © 2026 CirculoMetrix AI. All rights reserved.
               </p>
               <p className="text-sm text-gray-400 mt-2">
                 Building a sustainable future through data-driven insights.
